@@ -1,4 +1,4 @@
 실행방법
-streamlit run ./src/app.py
+streamlit run app.py
 
 수정사항 기록
