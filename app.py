@@ -77,13 +77,13 @@ def crawl_airbnb_listings(location: str) -> list:
             # 예외 발생 시 무시
             pass
 
-    # 상세 페이지는 처음 5개만 분석합니다.
+    # 상세 페이지는 처음 3개만 분석합니다.
     results = []
-    for i, detail_url in enumerate(listing_urls[:5]):
+    for i, detail_url in enumerate(listing_urls[:3]):
         # Sanitize the URL by stripping whitespace and quoting it
         sanitized_url = quote(detail_url.strip(), safe=":/?&=")
         
-        st.write(f"\n[{i+1}/{min(5, len(listing_urls))}] 상세 페이지 크롤링 중: {sanitized_url}")
+        st.write(f"\n[{i+1}/{min(3, len(listing_urls))}] 상세 페이지 크롤링 중: {sanitized_url}")
         try:
             driver.get(sanitized_url)
         except Exception as e:
@@ -121,7 +121,7 @@ def crawl_airbnb_listings(location: str) -> list:
             'title': title,
             'description': description,
             'detail_url': sanitized_url,
-            'image_urls': list(set(image_urls))[:5]  # 중복 제거 후 대표 1~5장
+            'image_urls': list(set(image_urls))  # 중복 제거 후 모든 이미지 사용
         }
         results.append(listing_data)
 
@@ -130,49 +130,6 @@ def crawl_airbnb_listings(location: str) -> list:
 
 
 # ===== (B) 이미지 분석  =====
-def analyze_image(image_url: str) -> dict:
-    """
-    주어진 이미지 URL을 이용해 OpenAI Vision API 기능을 호출하여 이미지 분석을 수행
-    """
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        "이 이미지를 한국어로 분석해 주세요. 인테리어 디자인의 세부 사항, 예를 들어 조명, "
-                        "레이아웃, 색 구성, 전반적인 분위기 및 눈에 띄는 디자인 특징 등을 자세하게 설명해 주세요. "
-                        "가능하다면 침대 수에 대한 추정 정보도 함께 제공해 주세요."
-                    ),
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": image_url,
-                    },
-                },
-            ],
-        }
-    ]
-    
-    try:
-        api_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            max_tokens=300,
-        )
-        ai_message = api_response.choices[0].message.content.strip() if api_response.choices else ""
-        return {
-            "description_from_ai": ai_message,
-            "bed_count": "정보 없음"
-        }
-    except Exception as e:
-        return {
-            "description_from_ai": f"이미지 처리 중 오류: {e}",
-            "bed_count": "정보 없음"
-        }
-
 
 def analyze_images(image_urls: list) -> dict:
  
@@ -183,7 +140,9 @@ def analyze_images(image_urls: list) -> dict:
                 {
                     "type": "text",
                     "text": (
-                        "아래 이미지들을 분석한 결과, 각 이미지에 담긴 인테리어 디자인의 핵심 요소(예: 조명, 레이아웃, 색 구성, 분위기 등)을 간략하게 요약해줘. 여러장의 이미지가 있다면 각 이미지에 대한 설명을 하나씩 설명하지 않고 한 번에 종합하여 제공해줘. 이미지가 숙소와 관련이 없다면 무시해도 돼. "
+                        "아래 이미지들을 분석한 결과, 이미지에 담긴 인테리어 디자인의 핵심 요소(예: 조명, 레이아웃, 색 구성, 분위기 등),숙소의 방(침실), 침대, 욕실 등 주요 시설의 개수를 구분하며 숙소의 특징을 간략하게 요약해줘. 또한 같은 장소에 대해 여러 사진이 있다고 생각되면 이는 하나의 공간으로 생각해야돼 "
+                        " 만약 여러 이미지가 있다면 개별 설명 없이 한 번에 종합해서 제공해줘. "
+                        "숙소와 관련 없는 이미지는 무시해도 돼."
                     ),
                 }
             ] + [
@@ -233,147 +192,10 @@ def display_results(results: list):
             st.write("침대 수 예측:", result["ai_analysis"].get("bed_count", "정보 없음"))
         st.markdown("---")
 
-
-# ===== (D) Streamlit: 기존의 채팅 UI 처리 =====
-# 이미 세션에 저장된 메시지들을 표시
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-
-# ===== (E) 입력받은 메시지 처리 (사용자 챗 인풋) =====
-if prompt := st.chat_input("무엇을 도와드릴까요? (예: 강릉 숙소 검색해줘)"):
-    # 사용자 메시지를 세션에 추가
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    # (1) OpenAI에 메시지 전달, 스트림 모드로 응답받기 (간단 예시)
-    with st.chat_message("assistant"):
-        messages_for_api = [
-            {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
-        ]
-        stream = client.chat.completions.create(
-            model=st.session_state["openai_model"],
-            messages=messages_for_api,
-            stream=True
-        )
-        response = st.write_stream(stream)
-    st.session_state.messages.append({"role": "assistant", "content": response})
-
-    # (2) 메시지 안에 "크롤링" / "검색" / "숙소" 등의 키워드가 있는 경우 => Airbnb 크롤링 시도
-    if any(keyword in prompt for keyword in ["크롤링", "검색", "숙소"]):
-        # 간단하게 정규식으로 사용자가 언급한 지역을 추출(예: "강릉", "서울" 등)
-        found_locations = re.findall(r'(강릉|서울|부산|제주|대전|대구|광주|인천|\w+)', prompt)
-        # 위 예시는 단순 데모. 실제로는 상황에 맞게 처리
-        
-        if found_locations:
-            location = found_locations[0]  # 첫 번째 매칭
-        else:
-            # 못 찾으면 기본값
-            location = "서울"
-
-        st.info(f"'{location}' 지역 숙소를 검색해볼게요. ")
-        
-        # (a) Selenium 크롤링
-        results = crawl_airbnb_listings(location)
-
-        if not results:
-            st.warning("숙소 정보를 찾지 못했습니다.")
-        else:
-            st.info("각 숙소의 이미지들을 분석합니다...")
-            for r in results:
-                if r["image_urls"]:
-                    st.write(f"[{r['title']}] 이미지들을 분석 중...")
-                    analysis = analyze_images(r["image_urls"][:5])
-                    r["ai_analysis"] = analysis
-                else:
-                    r["ai_analysis"] = {}
-            st.session_state.results = results
-            # 개별 분석 결과를 보여주는 display_results() 호출을 제거합니다.
-
-# LLM과의 대화를 통한 숙소 추천 기능 추가 (파일 맨 아래 또는 적절한 위치에 추가)
-if st.session_state.results:
-    st.subheader("LLM으로 숙소 추천 받기")
-    if st.button("LLM 추천 받기"):
-        def conversation_about_listings(results: list) -> str:
-            """
-            크롤링 및 이미지 분석 결과 기반으로 LLM에 숙소 옵션 정보를 전달,
-            각 옵션의 장단점 및 추천 이유를 포함한 답변을 받아옴
-            """
-            listings_prompt = "아래는 Airbnb 숙소 옵션들입니다:\n\n"
-            for idx, listing in enumerate(results, 1):
-                # description은 BeautifulSoup 객체 리스트일 수도 있으므로 텍스트로 변환
-                if isinstance(listing.get("description"), list):
-                    desc_text = " ".join(
-                        [s.get_text(strip=True) if hasattr(s, "get_text") else str(s)
-                         for s in listing.get("description")]
-                    )
-                else:
-                    desc_text = listing.get("description", "설명 없음")
-                listings_prompt += (
-                    f"{idx}. 제목: {listing['title']}\n"
-                    f"   설명: {desc_text}\n"
-                )
-                if "bed_count" in listing:
-                    listings_prompt += f"   침대 수(예시): {listing['bed_count']}\n"
-                listings_prompt += f"   URL: {listing['detail_url']}\n\n"
-            listings_prompt += (
-                "위 옵션들을 고려하여 사용자에게 추천할 최적의 숙소를 결정할 수 있도록 "
-                "각 옵션의 장단점과 선택 이유를 분석해 주세요."
-            )
-    
-            response = client.chat.completions.create(
-                model=st.session_state["openai_model"],
-                messages=[{"role": "user", "content": listings_prompt}],
-                max_tokens=500,  # max_tokens 를 늘림
-            )
-            return response.choices[0].message.content.strip()
-    
-        recommendation = conversation_about_listings(st.session_state.results)
-        st.markdown("**LLM 추천:**")
-        st.write(recommendation)
-        
-        # 추천 결과를 세션에 저장해 후속 질의 시 참고할 수 있도록 합니다.
-        st.session_state.llm_recommendation = recommendation
-
-
-# LLM 추천을 받은 후에는 해당 추천 내용을 바탕으로 추가 질의응답을 할 수 있습니다.
-if st.session_state.results and st.session_state.get("llm_recommendation"):
-    st.subheader("LLM 추천 기반 추가 질의응답")
-    followup_question = st.text_input("추천 내용을 바탕으로 추가 질문을 입력해주세요", key="llm_followup")
-    if followup_question:
-        context_messages = [
-            {
-                "role": "system",
-                "content": (
-                    f"다음은 이전에 LLM이 추천한 내용입니다:\n{st.session_state.llm_recommendation}\n"
-                    "이 내용을 바탕으로 사용자의 추가 질문에 답변해 주세요."
-                )
-            }
-        ]
-        context_messages.append({"role": "user", "content": followup_question})
-        
-        response = client.chat.completions.create(
-            model=st.session_state["openai_model"],
-            messages=context_messages,
-            max_tokens=500,  # 추가 질의응답에 대해 max_tokens 값 증가
-        )
-        answer = response.choices[0].message.content.strip()
-        st.markdown("**LLM 답변:**")
-        st.write(answer)
-
-        # (선택 사항) 추천 내용을 업데이트하여 대화 맥락을 누적할 수 있습니다.
-        st.session_state.llm_recommendation += f"\n\n[추가 질문] {followup_question}\n[답변] {answer}"
-
 def summarize_accommodation_info(results: list) -> str:
-
-
     summary_prompt = "다음은 Airbnb 숙소 옵션들의 정보입니다:\n\n"
     for idx, listing in enumerate(results, 1):
         title = listing.get("title", "제목 없음")
-        
-        # 숙소 설명이 BeautifulSoup 객체 리스트일 경우 텍스트로 변환
         description = listing.get("description", "설명 없음")
         if isinstance(description, list):
             desc_text = " ".join(
@@ -381,7 +203,7 @@ def summarize_accommodation_info(results: list) -> str:
             )
         else:
             desc_text = description
-        
+
         detail_url = listing.get("detail_url", "URL 정보 없음")
         image_analysis = listing.get("ai_analysis", {})
         img_analysis_text = image_analysis.get("description_from_ai", "이미지 분석 정보 없음")
@@ -405,50 +227,114 @@ def summarize_accommodation_info(results: list) -> str:
     )
     return response.choices[0].message.content.strip()
 
+# conversation_about_listings 함수 (app.py 내 정의)
+def conversation_about_listings(results, summary):
+    prompt = (
+        "다음은 Airbnb 숙소 옵션들의 요약 정보입니다:\n\n"
+        f"{summary}\n\n"
+        "각 숙소의 상세 이미지 분석 결과(인테리어 디자인, 조명, 레이아웃, 색 구성, 분위기 등 및 방, 침대, 욕실 등 주요시설 개수)가 포함되어 있습니다. "
+        "이 분석 내용을 바탕으로 숙소의 주요 특징, 장단점, 잠재적인 문제점까지 자세하게 평가하고 추천해 주세요. "
+        "이미지 분석 결과를 충분히 반영해 상세한 평가를 5줄 이내로 작성해 주세요."
+    )
+    response = client.chat.completions.create(
+        model=st.session_state["openai_model"],
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=500,
+    )
+    return response.choices[0].message.content.strip()
+
+# ===== (D) Streamlit: 기존의 채팅 UI 처리 =====
+# 이미 세션에 저장된 메시지들을 표시
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
 
-if st.session_state.results:
-    st.subheader("숙소 정보 요약")
-    final_summary = summarize_accommodation_info(st.session_state.results)
-    st.subheader("최종 분석 결과")
-    st.markdown(final_summary)
-    st.session_state.accommodations_summary = final_summary
-
-
-    st.subheader("LLM 추천")
-    def conversation_about_listings(results: list) -> str:
-        """
-        크롤링 및 이미지 분석 결과 기반으로 LLM에 숙소 옵션 정보를 전달,
-        각 옵션의 장단점 및 추천 이유를 포함한 답변을 받아옴
-        """
-        listings_prompt = "아래는 Airbnb 숙소 옵션들입니다:\n\n"
-        for idx, listing in enumerate(results, 1):
-            # 숙소 설명이 BeautifulSoup 객체 리스트일 경우 텍스트로 변환
-            if isinstance(listing.get("description"), list):
-                desc_text = " ".join(
-                    [s.get_text(strip=True) if hasattr(s, "get_text") else str(s)
-                     for s in listing.get("description")]
-                )
-            else:
-                desc_text = listing.get("description", "설명 없음")
-            listings_prompt += (
-                f"{idx}. 제목: {listing['title']}\n"
-                f"   설명: {desc_text}\n"
-                f"   URL: {listing['detail_url']}\n\n"
+# ===== (E) 입력받은 메시지 처리 (사용자 챗 인풋) =====
+if prompt := st.chat_input("무엇을 도와드릴까요? (예: 강릉 숙소 검색해줘)"):
+    # 사용자 메시지를 세션에 추가
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+        
+    # 예약 관련 메시지가 감지되면 예약 로직 우선 수행
+    if any(keyword in prompt for keyword in ["예약", "예약하고 싶다"]):
+        if st.session_state.results:
+            # 예시로 첫 번째 검색 결과의 링크를 예약 URL로 사용 (사용자 선택 로직으로 확장 가능)
+            booking_url = st.session_state.results[0].get("detail_url", "")
+            with st.chat_message("assistant"):
+                st.markdown("예약 페이지를 여는 중입니다...")
+            import streamlit.components.v1 as components
+            components.html(
+                f"<script>window.open('{booking_url}', '_blank');</script>", height=0
             )
-        listings_prompt += (
-            "위 옵션들을 고려하여 사용자에게 추천할 최적의 숙소를 결정할 수 있도록 "
-            "각 옵션의 장단점과 선택 이유를 분석해 주세요."
-        )
-    
-        response = client.chat.completions.create(
-            model=st.session_state["openai_model"],
-            messages=[{"role": "user", "content": listings_prompt}],
-            max_tokens=500,
-        )
-        return response.choices[0].message.content.strip()
-    
-    recommendation = conversation_about_listings(st.session_state.results)
-    st.markdown("**LLM 추천:**")
-    st.write(recommendation)
-    st.session_state.llm_recommendation = recommendation
+            st.markdown(f"[예약할 숙소 바로가기]({booking_url})")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"예약 페이지를 열었습니다: {booking_url}"
+            })
+        else:
+            with st.chat_message("assistant"):
+                st.markdown("예약 가능한 숙소 정보가 없습니다. 먼저 숙소 검색을 진행해 주세요.")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": "예약 가능한 숙소 정보가 없습니다."
+            })
+    else:
+        # 일반 대화 처리
+        with st.chat_message("assistant"):
+            messages_for_api = [
+                {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
+            ]
+            stream = client.chat.completions.create(
+                model=st.session_state["openai_model"],
+                messages=messages_for_api,
+                stream=True
+            )
+            response = st.write_stream(stream)
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        
+        # 숙소 검색/크롤링 키워드가 포함된 경우
+        if any(keyword in prompt for keyword in ["크롤링", "검색", "숙소"]):
+            found_locations = re.findall(r'(강릉|서울|부산|제주|대전|대구|광주|인천|\w+)', prompt)
+            location = found_locations[0] if found_locations else "서울"
+            st.info(f"'{location}' 지역 숙소를 검색해볼게요. ")
+
+            # (a) Selenium 크롤링
+            results = crawl_airbnb_listings(location)
+
+            if not results:
+                st.warning("숙소 정보를 찾지 못했습니다.")
+            else:
+                st.info("각 숙소의 이미지들을 분석합니다...")
+                for r in results:
+                    if r["image_urls"]:
+                        st.write(f"[{r['title']}] 이미지들을 분석 중...")
+                        analysis = analyze_images(r["image_urls"])
+                        r["ai_analysis"] = analysis
+                    else:
+                        r["ai_analysis"] = {}
+                st.session_state.results = results
+
+                # 자동으로 LLM 추천 메시지 생성 후 같은 채팅창 내에 출력
+                if st.session_state.results and not st.session_state.get("llm_recommendation"):
+                    final_summary = summarize_accommodation_info(st.session_state.results)
+                    st.session_state.accommodations_summary = final_summary
+                    recommendation = conversation_about_listings(st.session_state.results, final_summary)
+                    st.session_state.llm_recommendation = recommendation
+                    with st.chat_message("assistant"):
+                        st.markdown("**LLM 추천:**")
+                        st.write(recommendation)
+                        st.markdown("---")
+                        st.markdown("**숙소 정보:**")
+                        for listing in st.session_state.results:
+                            st.markdown(f"**[{listing['title']}]({listing['detail_url']})**")
+                            # 각 숙소 설명 바로 아래에 대표 이미지 출력
+                            if listing.get("image_urls"):
+                                st.image(listing["image_urls"][0], width=300)
+                            if "ai_analysis" in listing and listing["ai_analysis"]:
+                                st.markdown("**[AI 분석 결과]**")
+                                st.write("", listing["ai_analysis"].get("description_from_ai", "정보 없음"))
+                                st.write("", listing["ai_analysis"].get("bed_count", "정보 없음"))
+                            st.markdown("---")
+
