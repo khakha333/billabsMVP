@@ -15,22 +15,22 @@ import type { SummarizeCodeStructureOutput } from '@/ai/flows/summarize-code-str
 export default function CodeInsightsPage() {
   const [inputCode, setInputCode] = useState<string>('');
   const [displayedCode, setDisplayedCode] = useState<string>(''); // Code to show in CodeDisplay
-  const [summary, setSummary] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<SummarizeCodeStructureOutput | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const { toast } = useToast();
 
   const handleAnalyzeCode = async (codeInput: string) => {
     setIsLoadingAnalysis(true);
-    setSummary(null); // Clear previous summary
+    setAnalysisResult(null); // Clear previous result
     setInputCode(codeInput); // Store original input for analysis & export
     setDisplayedCode(codeInput); // Set code for display
 
     try {
       const result: SummarizeCodeStructureOutput = await analyzeCodeStructureAction({ code: codeInput });
-      setSummary(result.summary);
+      setAnalysisResult(result);
       toast({
         title: "분석 완료",
-        description: "코드 구조 요약이 생성되었습니다.",
+        description: "코드 구조 요약 및 사용된 라이브러리/API 정보가 생성되었습니다.",
       });
     } catch (error) {
       console.error("Analysis error:", error);
@@ -38,7 +38,7 @@ export default function CodeInsightsPage() {
       if (error instanceof Error) {
         errorMessage = error.message;
       }
-      setSummary(`오류: ${errorMessage}`);
+      setAnalysisResult({ summary: `오류: ${errorMessage}`, usedLibrariesAndAPIs: [] });
       toast({
         title: "분석 실패",
         description: errorMessage,
@@ -50,7 +50,7 @@ export default function CodeInsightsPage() {
   };
 
   const handleExport = () => {
-    if (!inputCode) {
+    if (!inputCode && !analysisResult) {
       toast({
         title: "내보내기 오류",
         description: "내보낼 코드가 없습니다. 먼저 코드를 분석해주세요.",
@@ -58,6 +58,10 @@ export default function CodeInsightsPage() {
       });
       return;
     }
+
+    const librariesText = analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.length > 0 
+      ? analysisResult.usedLibrariesAndAPIs.join('\n- ') 
+      : '감지된 라이브러리 또는 API가 없습니다.';
 
     const content = `// 코드 인사이트 내보내기
 // =====================
@@ -68,7 +72,11 @@ ${inputCode}
 
 // AI 생성 요약:
 // ---------------------
-${summary || '사용 가능한 요약이 없습니다.'}
+${analysisResult?.summary || '사용 가능한 요약이 없습니다.'}
+
+// 사용된 라이브러리 및 API:
+// --------------------------------
+${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.length > 0 ? '- ' : ''}${librariesText}
 `;
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
@@ -95,7 +103,7 @@ ${summary || '사용 가능한 요약이 없습니다.'}
               <CodeInputArea onAnalyze={handleAnalyzeCode} isLoading={isLoadingAnalysis} />
             </div>
             <div className="flex-grow h-1/2 lg:h-auto">
-              <AnalysisSummaryDisplay summary={summary} isLoading={isLoadingAnalysis} />
+              <AnalysisSummaryDisplay analysisResult={analysisResult} isLoading={isLoadingAnalysis} />
             </div>
           </div>
 
@@ -114,7 +122,7 @@ ${summary || '사용 가능한 요약이 없습니다.'}
         </div>
         
         <div className="mt-auto pt-4 flex justify-end">
-          <Button onClick={handleExport} disabled={!inputCode && !summary} variant="outline">
+          <Button onClick={handleExport} disabled={!inputCode && !analysisResult} variant="outline">
             <Download className="mr-2 h-5 w-5" />
             코드 및 요약 내보내기
           </Button>
