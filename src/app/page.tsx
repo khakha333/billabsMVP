@@ -29,18 +29,18 @@ export default function CodeInsightsPage() {
       const result: SummarizeCodeStructureOutput = await analyzeCodeStructureAction({ code: codeInput });
       setSummary(result.summary);
       toast({
-        title: "Analysis Complete",
-        description: "Code structure summary has been generated.",
+        title: "분석 완료",
+        description: "코드 구조 요약이 생성되었습니다.",
       });
     } catch (error) {
       console.error("Analysis error:", error);
-      let errorMessage = "Failed to analyze code.";
+      let errorMessage = "코드 분석에 실패했습니다.";
       if (error instanceof Error) {
         errorMessage = error.message;
       }
-      setSummary(`Error: ${errorMessage}`);
+      setSummary(`오류: ${errorMessage}`);
       toast({
-        title: "Analysis Failed",
+        title: "분석 실패",
         description: errorMessage,
         variant: "destructive",
       });
@@ -52,23 +52,23 @@ export default function CodeInsightsPage() {
   const handleExport = () => {
     if (!inputCode) {
       toast({
-        title: "Export Error",
-        description: "No code to export. Please analyze some code first.",
+        title: "내보내기 오류",
+        description: "내보낼 코드가 없습니다. 먼저 코드를 분석해주세요.",
         variant: "destructive",
       });
       return;
     }
 
-    const content = `// Code Insights Export
+    const content = `// 코드 인사이트 내보내기
 // =====================
 
-// Original Code:
+// 원본 코드:
 // --------------
 ${inputCode}
 
-// AI Generated Summary:
+// AI 생성 요약:
 // ---------------------
-${summary || 'No summary available.'}
+${summary || '사용 가능한 요약이 없습니다.'}
 `;
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
@@ -79,8 +79,8 @@ ${summary || 'No summary available.'}
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href); // Clean up
     toast({
-      title: "Export Successful",
-      description: "Code and summary exported to code_insights_export.txt",
+      title: "내보내기 성공",
+      description: "코드와 요약이 code_insights_export.txt 파일로 내보내졌습니다.",
     });
   };
 
@@ -106,7 +106,7 @@ ${summary || 'No summary available.'}
             ) : (
               <div className="h-full flex items-center justify-center bg-card rounded-lg shadow">
                 <p className="text-muted-foreground text-lg italic p-8 text-center">
-                  Your interactive code view will appear here once you analyze some code.
+                  코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
                 </p>
               </div>
             )}
@@ -116,12 +116,12 @@ ${summary || 'No summary available.'}
         <div className="mt-auto pt-4 flex justify-end">
           <Button onClick={handleExport} disabled={!inputCode && !summary} variant="outline">
             <Download className="mr-2 h-5 w-5" />
-            Export Code & Summary
+            코드 및 요약 내보내기
           </Button>
         </div>
       </main>
       <footer className="py-4 text-center text-sm text-muted-foreground border-t">
-        Code Insights &copy; {new Date().getFullYear()}
+        코드 인사이트 &copy; {new Date().getFullYear()}
       </footer>
     </div>
   );

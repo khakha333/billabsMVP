@@ -92,7 +92,7 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
         setExplanation(result.explanation);
       } catch (error) {
         console.error("Error fetching explanation:", error);
-        setExplanation("Could not fetch explanation for this token.");
+        setExplanation("이 토큰에 대한 설명을 가져올 수 없습니다.");
       } finally {
         setIsLoading(false);
       }
@@ -144,7 +144,7 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
                 <Skeleton className="h-4 w-32" />
               </div>
             ) : (
-              explanation || `Hover to analyze "${token}"...`
+              explanation || `"${token}" 설명을 보려면 마우스를 올리세요.`
             )}
           </TooltipContent>
         )}

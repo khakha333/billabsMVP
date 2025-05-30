@@ -17,10 +17,10 @@ export const AnalysisSummaryDisplay: React.FC<AnalysisSummaryDisplayProps> = ({ 
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl">
           <BotMessageSquare className="h-6 w-6 text-primary" />
-          AI Analysis Summary
+          AI 분석 요약
         </CardTitle>
         <CardDescription>
-          An overview of your code's structure and functionality.
+          코드 구조 및 기능 개요입니다.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden p-0">
@@ -38,7 +38,7 @@ export const AnalysisSummaryDisplay: React.FC<AnalysisSummaryDisplayProps> = ({ 
             </div>
           ) : (
             <p className="text-muted-foreground italic">
-              No summary available. Paste your code and click "Analyze Code" to generate one.
+              사용 가능한 요약이 없습니다. 코드를 붙여넣고 "코드 분석"을 클릭하여 생성하세요.
             </p>
           )}
         </ScrollArea>

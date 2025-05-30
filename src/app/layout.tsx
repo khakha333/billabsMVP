@@ -8,8 +8,8 @@ import { Toaster } from "@/components/ui/toaster";
 // already provide the .variable property. No need to instantiate them.
 
 export const metadata: Metadata = {
-  title: 'Code Insights',
-  description: 'AI-powered code analysis and explanation tool',
+  title: '코드 인사이트',
+  description: 'AI 기반 코드 분석 및 설명 도구',
 };
 
 export default function RootLayout({
@@ -18,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
         {children}
         <Toaster />

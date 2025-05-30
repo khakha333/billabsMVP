@@ -26,17 +26,17 @@ export const CodeInputArea: React.FC<CodeInputAreaProps> = ({ onAnalyze, isLoadi
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl">
           <UploadCloud className="h-6 w-6 text-primary" />
-          Input Your Code
+          코드 입력
         </CardTitle>
         <CardDescription>
-          Paste your code snippet below to get an AI-powered analysis and explanation.
+          AI 기반 분석 및 설명을 받으려면 아래에 코드 스니펫을 붙여넣으세요.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow">
         <Textarea
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Paste your code here..."
+          placeholder="여기에 코드를 붙여넣으세요..."
           className="h-full w-full resize-none font-mono text-sm p-3 rounded-md shadow-inner"
           aria-label="Code input area"
         />
@@ -44,7 +44,7 @@ export const CodeInputArea: React.FC<CodeInputAreaProps> = ({ onAnalyze, isLoadi
       <CardFooter>
         <Button onClick={handleSubmit} disabled={isLoading || !inputValue.trim()} className="w-full text-base py-3">
           <Wand2 className="mr-2 h-5 w-5" />
-          {isLoading ? 'Analyzing...' : 'Analyze Code'}
+          {isLoading ? '분석 중...' : '코드 분석'}
         </Button>
       </CardFooter>
     </Card>

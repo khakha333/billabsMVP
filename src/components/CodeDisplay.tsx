@@ -28,7 +28,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl">
           <FileText className="h-6 w-6 text-primary" />
-          Interactive Code View
+          대화형 코드 보기
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden p-0">
