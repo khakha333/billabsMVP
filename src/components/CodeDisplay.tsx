@@ -23,7 +23,7 @@ const tokenizeCode = (code: string): string[] => {
   const tokenPatterns = [
     /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, // Comments (//, /* */, #)
     /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, // String literals
-    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined)\b/, // Keywords
+    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined|def)\b/, // Keywords (added 'def' for Python)
     /[a-zA-Z_]\w*/, // Identifiers
     /\d+(?:\.\d*)?|\.\d+/, // Numbers
     />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*\/%&|^~<>?=]/, // Operators and Punctuation (multi-char first)
@@ -48,6 +48,10 @@ const tokenizeCode = (code: string): string[] => {
 const extractFunctionNameFromLine = (line: string): string | null => {
   let match;
 
+  // 0. Python function: def foo(...):
+  match = line.match(/^\s*def\s+([a-zA-Z_]\w*)\s*\([^)]*\)\s*:/);
+  if (match) return match[1];
+
   // 1. function keyword: function foo(...), async function foo(...)
   match = line.match(/^\s*(async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/);
   if (match) return match[2];
@@ -61,31 +65,31 @@ const extractFunctionNameFromLine = (line: string): string | null => {
   if (match) return match[1]; // Return the variable name
 
   // 4. Object methods (colon syntax): foo: function(...), bar: async function()
+  // Ensure it's likely a function definition by checking for an opening parenthesis
   match = line.match(/^\s*([a-zA-Z_$][\w$]*)\s*:\s*(async\s+)?function\s*\(/);
   if (match) return match[1];
-
+  
   // 5. ES6 method syntax in objects/classes: myMethod(...), async myMethod(...), get myProp(){}, set myProp(val){}, *myGenerator()
-  //    Also captures class constructors: constructor()
-  match = line.match(/^\s*(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(/);
+  // Also captures class constructors: constructor()
+  // Improved to better handle async and ensure it's followed by parameters and a body-like structure.
+  match = line.match(/^\s*(static\s+)?(async\s+)?(get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\([^)]*\)\s*\{/);
   if (match) {
-    const potentialName = match[1];
-    // Exclude common control flow keywords to avoid false positives
+    const potentialName = match[4];
     const excludedKeywords = ['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'new', 'delete', 'void', 'instanceof'];
     if (!excludedKeywords.includes(potentialName)) {
-      // Check if the line likely ends with an opening brace for a function body,
-      // allowing for type annotations or other content between ')' and '{'.
-      // This check assumes the opening brace '{' for the method is on the same line.
-      if (line.match(/\)\s*[^=]*\{$/) || (potentialName === 'constructor' && line.match(/\)\s*\{$/))) {
-        return potentialName;
-      }
-      // If no brace on the same line, but it's a common method pattern (not an arrow func assignment),
-      // we might still consider it. However, this can be error-prone.
-      // For now, we require the brace on the same line for this pattern to reduce false positives.
-      // If this is too strict, the condition above might need to be relaxed or removed,
-      // relying more on the AI to confirm if the segment is a function.
+      return potentialName;
     }
   }
   
+  match = line.match(/^\s*(static\s+)?(async\s+)?(get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(/);
+   if (match) {
+    const potentialName = match[4];
+    const excludedKeywords = ['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'new', 'delete', 'void', 'instanceof'];
+     if (!excludedKeywords.includes(potentialName) && !line.includes('=>') && (line.includes('{') || line.trim().endsWith(':'))) { 
+      return potentialName;
+    }
+  }
+
   return null;
 };
 
@@ -109,10 +113,10 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     const text = selection?.toString().trim();
 
     if (text && text.length > 0 && selection && selection.anchorNode && codeDisplayRef.current.contains(selection.anchorNode) ) {
-      setSelectedTextForDialog(text); 
+      setSelectedTextForDialog(text);
       const range = selection.getRangeAt(0);
       setSelectionRect(range.getBoundingClientRect());
-      setExplanationForDialog(null); 
+      setExplanationForDialog(null);
     } else {
       setSelectedTextForDialog(null);
       setSelectionRect(null);
@@ -124,12 +128,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [code]); 
+  }, [code]);
 
   const requestExplanationForSegment = async (segment: string, titleHint: string) => {
     if (!segment) return;
     setIsLoadingDialogExplanation(true);
-    setExplanationForDialog(null); 
+    setExplanationForDialog(null);
     setCurrentDialogTitle(titleHint ? `"${titleHint}" 설명` : "코드 설명");
     setShowExplanationDialog(true);
     try {
@@ -142,10 +146,8 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       setIsLoadingDialogExplanation(false);
     }
   };
-  
+
   const handleExplainFunctionByName = (functionName: string) => {
-    // For function explanation, the 'segment' sent to AI is the function name.
-    // `selectedTextForDialog` is not set here, so the dialog won't show a preview for "선택된 코드".
     requestExplanationForSegment(functionName, functionName);
   };
 
@@ -159,21 +161,26 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   const getExplainButtonStyle = (): React.CSSProperties => {
     if (!selectionRect || !codeDisplayRef.current) return { display: 'none' };
     const containerRect = codeDisplayRef.current.getBoundingClientRect();
-    
+
     let top = selectionRect.bottom - containerRect.top + window.scrollY + 5;
-    let left = selectionRect.right - containerRect.left + window.scrollX - 80; 
+    let left = selectionRect.right - containerRect.left + window.scrollX - 80;
 
-    const buttonHeight = 36; 
-    const buttonWidth = 160; 
+    const buttonHeight = 36;
+    const buttonWidth = 160;
 
-    top = Math.max(5, Math.min(selectionRect.bottom - containerRect.top + 5, containerRect.height - buttonHeight - 5));
-    left = Math.max(5, Math.min(selectionRect.right - containerRect.left - buttonWidth / 2 , containerRect.width - buttonWidth - 5));
+    // Ensure the button stays within the bounds of the codeDisplayRef
+    const relativeTop = selectionRect.bottom - containerRect.top + 5;
+    const relativeLeft = selectionRect.right - containerRect.left - (buttonWidth / 2);
 
-    return { 
-      position: 'absolute', 
-      top: `${top}px`, 
-      left: `${left}px`, 
-      zIndex: 10 
+    top = Math.max(5, Math.min(relativeTop, containerRect.height - buttonHeight - 5));
+    left = Math.max(5, Math.min(relativeLeft, containerRect.width - buttonWidth - 5));
+
+
+    return {
+      position: 'absolute',
+      top: `${top}px`,
+      left: `${left}px`,
+      zIndex: 10
     };
   };
 
@@ -238,8 +245,8 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       <Dialog open={showExplanationDialog} onOpenChange={(isOpen) => {
           setShowExplanationDialog(isOpen);
           if (!isOpen) {
-             setSelectedTextForDialog(null); 
-             setSelectionRect(null);       
+             setSelectedTextForDialog(null);
+             setSelectionRect(null);
              setExplanationForDialog(null);
           }
         }}>
@@ -252,7 +259,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
             <DialogDescription>AI가 생성한 코드 조각에 대한 설명입니다.</DialogDescription>
           </DialogHeader>
           <div className="flex-grow overflow-y-auto pr-2 space-y-4 py-2">
-            {selectedTextForDialog && ( 
+            {selectedTextForDialog && (
                 <div className="selected-code-preview mb-4">
                 <h4 className="text-sm font-semibold mb-1 text-muted-foreground">설명 요청한 코드:</h4>
                 <ScrollArea className="max-h-40 w-full rounded-md border bg-muted p-2">
@@ -285,6 +292,3 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     </Card>
   );
 };
-    
-
-    
