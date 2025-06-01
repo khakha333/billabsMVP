@@ -17,13 +17,36 @@ interface CodeDisplayProps {
   code: string;
 }
 
-// Improved tokenizer: handles spaces, newlines, and keeps punctuation/operators as separate tokens.
+// New tokenizer using matchAll to capture full strings, comments, etc.
 const tokenizeCode = (code: string): string[] => {
   if (!code) return [];
-  // Regex to split by delimiters (whitespace, punctuation, operators) while keeping them
-  // It prioritizes multi-character operators. Also handles comments.
-  const regex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|>>>=|>>>|<<=|>>=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*/%&|^~<>?=]|\s+|[^\s\w().,{}[\];:\-+*/%&|^~<>?=]+)/g;
-  return code.split(regex).filter(token => token !== undefined && token !== ''); // Filter out empty strings from split
+
+  const tokenPatterns = [
+    /(?:\/\/[^\n]*|\/\*(?:[\s\S]*?)\*\/)/, // Comments (line and block)
+    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, // String literals
+    // Keywords (ensure \b for whole word matching)
+    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined)\b/,
+    /[a-zA-Z_]\w*/, // Identifiers (including function names not matching keywords)
+    /\d+(?:\.\d*)?|\.\d+/, // Numbers
+    />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*/%&|^~<>?=]/, // Operators and Punctuation (prioritize multi-char)
+    /\s+/, // Whitespace
+    /./, // Any other single character (fallback, should ideally not be hit often if regex is comprehensive)
+  ];
+  const combinedRegex = new RegExp(tokenPatterns.map(r => `(${r.source})`).join('|'), 'g');
+  
+  const tokens: string[] = [];
+  let match;
+  while ((match = combinedRegex.exec(code)) !== null) {
+    // Find the first non-null capturing group
+    // Start from index 1 because index 0 is the full match
+    for (let i = 1; i < match.length; i++) {
+      if (match[i] !== undefined) {
+        tokens.push(match[i]);
+        break;
+      }
+    }
+  }
+  return tokens;
 };
 
 
@@ -47,8 +70,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       setSelectedText(text);
       const range = selection.getRangeAt(0);
       setSelectionRect(range.getBoundingClientRect());
-      setExplanationForSelection(null); // Clear previous explanation
-      // Do not open dialog immediately, button will trigger it
+      setExplanationForSelection(null); 
     } else {
       setSelectedText(null);
       setSelectionRect(null);
@@ -60,12 +82,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [code]); // Rerun if code changes, to ensure selection context is fresh
+  }, [code]); 
 
   const handleExplainSelection = async () => {
     if (!selectedText) return;
     setIsLoadingSelectionExplanation(true);
-    setShowSelectionExplanationDialog(true); // Open dialog
+    setShowSelectionExplanationDialog(true); 
     try {
       const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: code, codeSegment: selectedText });
       setExplanationForSelection(result.explanation);
@@ -81,14 +103,11 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     if (!selectionRect || !codeDisplayRef.current) return { display: 'none' };
     
     const containerRect = codeDisplayRef.current.getBoundingClientRect();
-    // Position button slightly above and to the right of the selection end
-    // Adjust these offsets as needed
     let top = selectionRect.bottom - containerRect.top + window.scrollY + 5;
-    let left = selectionRect.right - containerRect.left + window.scrollX - 20; // Move left a bit to not obscure selection end
+    let left = selectionRect.right - containerRect.left + window.scrollX - 20; 
 
-    // Keep button within visible area of the code display card
-    top = Math.max(5, Math.min(top, containerRect.height - 30)); // 30px is approx button height
-    left = Math.max(5, Math.min(left, containerRect.width - 150)); // 150px is approx button width
+    top = Math.max(5, Math.min(top, containerRect.height - 30)); 
+    left = Math.max(5, Math.min(left, containerRect.width - 150)); 
 
     return {
       position: 'absolute',
@@ -134,7 +153,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
 
       <Dialog open={showSelectionExplanationDialog} onOpenChange={(isOpen) => {
           setShowSelectionExplanationDialog(isOpen);
-          if (!isOpen) { // Reset selection when dialog closes
+          if (!isOpen) { 
              setSelectedText(null);
              setSelectionRect(null);
           }
