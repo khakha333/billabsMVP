@@ -20,17 +20,8 @@ interface CodeDisplayProps {
 const tokenizeCode = (code: string): string[] => {
   if (!code) return [];
 
-  // Regex to capture:
-  // 1. Full comments (//, /* */, #)
-  // 2. Full string literals ("", '', ``)
-  // 3. Keywords (as whole words)
-  // 4. Identifiers (variable names, function names)
-  // 5. Numbers (integers, decimals)
-  // 6. Multi-character operators first, then single character operators/punctuation
-  // 7. Whitespace
-  // 8. Any other single character (fallback)
   const tokenPatterns = [
-    /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, // Comments
+    /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, // Comments (//, /* */, #)
     /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, // String literals
     /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined)\b/, // Keywords
     /[a-zA-Z_]\w*/, // Identifiers
@@ -44,7 +35,6 @@ const tokenizeCode = (code: string): string[] => {
   const tokens: string[] = [];
   let match;
   while ((match = combinedRegex.exec(code)) !== null) {
-    // Find the first capturing group that matched
     for (let i = 1; i < match.length; i++) {
       if (match[i] !== undefined) {
         tokens.push(match[i]);
@@ -59,32 +49,40 @@ const extractFunctionNameFromLine = (line: string): string | null => {
   let match;
 
   // 1. function keyword: function foo(...), async function foo(...)
-  match = line.match(/^\s*(async\s+)?function\s+([a-zA-Z_][\w$]*)\s*\(/);
+  match = line.match(/^\s*(async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/);
   if (match) return match[2];
 
   // 2. Arrow functions assigned to variables: const foo = (...) =>, let bar = async () =>
-  match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_][\w$]*)\s*=\s*(?:async\s*)?\s*\(.*\)\s*=>/);
+  match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s*)?\(.*\)\s*=>/);
   if (match) return match[1];
 
   // 3. Function expressions assigned to variables: const foo = function(...), let bar = async function baz(...)
-  match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_][\w$]*)\s*=\s*(async\s+)?function(?:\s+([a-zA-Z_][\w$]*))?\s*\(/);
+  match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(async\s+)?function(?:\s+([a-zA-Z_$][\w$]*))?\s*\(/);
   if (match) return match[1]; // Return the variable name
 
   // 4. Object methods (colon syntax): foo: function(...), bar: async function()
-  match = line.match(/^\s*([a-zA-Z_][\w$]*)\s*:\s*(async\s+)?function/);
+  match = line.match(/^\s*([a-zA-Z_$][\w$]*)\s*:\s*(async\s+)?function\s*\(/);
   if (match) return match[1];
 
-  // 5. ES6 method syntax in objects/classes: myMethod(...), get myProp(){}, set myProp(val){}, *myGenerator()
+  // 5. ES6 method syntax in objects/classes: myMethod(...), async myMethod(...), get myProp(){}, set myProp(val){}, *myGenerator()
   //    Also captures class constructors: constructor()
-  match = line.match(/^\s*(?:static\s+)?(?:get\s+|set\s+|\*)?([a-zA-Z_][\w$]*|constructor)\s*\(/);
+  match = line.match(/^\s*(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(/);
   if (match) {
     const potentialName = match[1];
-    // Exclude common control flow keywords to avoid false positives like if (...) {
-    if (!['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof'].includes(potentialName)) {
-      // Check if the line likely ends with an opening brace for a function body
-      if (line.match(/\)\s*\{$/) || line.match(/\)\s*[^=]*\{$/) || (potentialName ==='constructor' && line.match(/\)\s*\{$/)) ) {
+    // Exclude common control flow keywords to avoid false positives
+    const excludedKeywords = ['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'new', 'delete', 'void', 'instanceof'];
+    if (!excludedKeywords.includes(potentialName)) {
+      // Check if the line likely ends with an opening brace for a function body,
+      // allowing for type annotations or other content between ')' and '{'.
+      // This check assumes the opening brace '{' for the method is on the same line.
+      if (line.match(/\)\s*[^=]*\{$/) || (potentialName === 'constructor' && line.match(/\)\s*\{$/))) {
         return potentialName;
       }
+      // If no brace on the same line, but it's a common method pattern (not an arrow func assignment),
+      // we might still consider it. However, this can be error-prone.
+      // For now, we require the brace on the same line for this pattern to reduce false positives.
+      // If this is too strict, the condition above might need to be relaxed or removed,
+      // relying more on the AI to confirm if the segment is a function.
     }
   }
   
@@ -111,7 +109,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     const text = selection?.toString().trim();
 
     if (text && text.length > 0 && selection && selection.anchorNode && codeDisplayRef.current.contains(selection.anchorNode) ) {
-      setSelectedTextForDialog(text); // This is the actual selected segment for explanation
+      setSelectedTextForDialog(text); 
       const range = selection.getRangeAt(0);
       setSelectionRect(range.getBoundingClientRect());
       setExplanationForDialog(null); 
@@ -135,8 +133,6 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     setCurrentDialogTitle(titleHint ? `"${titleHint}" 설명` : "코드 설명");
     setShowExplanationDialog(true);
     try {
-      // The 'segment' here is what the AI will analyze. 
-      // 'titleHint' is just for the dialog title.
       const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: code, codeSegment: segment });
       setExplanationForDialog(result.explanation);
     } catch (error) {
@@ -149,14 +145,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   
   const handleExplainFunctionByName = (functionName: string) => {
     // For function explanation, the 'segment' sent to AI is the function name.
-    // The AI is expected to find the function body in the 'fullCodeContext'.
-    setSelectedTextForDialog(null); // Clear any text selection
+    // `selectedTextForDialog` is not set here, so the dialog won't show a preview for "선택된 코드".
     requestExplanationForSegment(functionName, functionName);
   };
 
   const handleExplainSelection = () => {
     if (selectedTextForDialog) {
-      // For selection, the 'segment' is the selected text itself.
       requestExplanationForSegment(selectedTextForDialog, selectedTextForDialog);
     }
   };
@@ -166,19 +160,14 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     if (!selectionRect || !codeDisplayRef.current) return { display: 'none' };
     const containerRect = codeDisplayRef.current.getBoundingClientRect();
     
-    // Position relative to the codeDisplayRef container
     let top = selectionRect.bottom - containerRect.top + window.scrollY + 5;
-    let left = selectionRect.right - containerRect.left + window.scrollX - 80; // Adjust for button width
+    let left = selectionRect.right - containerRect.left + window.scrollX - 80; 
 
-    // Clamp button position within the codeDisplayRef container bounds
     const buttonHeight = 36; 
     const buttonWidth = 160; 
 
-    // Ensure the button does not overflow the container
-    // The scrollY/scrollX were removed because the containerRect is already relative to viewport for getBoundingClientRect
     top = Math.max(5, Math.min(selectionRect.bottom - containerRect.top + 5, containerRect.height - buttonHeight - 5));
     left = Math.max(5, Math.min(selectionRect.right - containerRect.left - buttonWidth / 2 , containerRect.width - buttonWidth - 5));
-
 
     return { 
       position: 'absolute', 
@@ -249,10 +238,6 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       <Dialog open={showExplanationDialog} onOpenChange={(isOpen) => {
           setShowExplanationDialog(isOpen);
           if (!isOpen) {
-             // Do not clear selectedTextForDialog here if it was for a function button.
-             // Only clear if it was a text selection that is now closed.
-             // However, the popup button logic itself might need selectedText to be null for it to disappear.
-             // Let's clear it for now to ensure the button disappears.
              setSelectedTextForDialog(null); 
              setSelectionRect(null);       
              setExplanationForDialog(null);
