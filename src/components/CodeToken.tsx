@@ -2,7 +2,7 @@
 "use client";
 
 import type React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { explainCodeSegmentAction, explainCodeLineAction } from '@/lib/actions';
@@ -11,6 +11,8 @@ import type { ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
 interface CodeTokenProps {
   token: string;
   fullCodeContext: string;
+  // Add tokenStartIndex to help locate the token accurately if needed, though not used by current function parsing.
+  // tokenStartIndex: number;
 }
 
 const KEYWORDS = new Set([
@@ -27,6 +29,7 @@ const OPERATORS_PUNCTUATION = new Set([
   '.', ',', ';', ':', '(', ')', '{', '}', '[', ']', '?', '=>', '...',
 ]);
 
+// This function determines the general category of a token.
 const getTokenType = (token: string, nextToken?: string): string => {
   if (KEYWORDS.has(token)) {
     return 'keyword';
@@ -36,9 +39,12 @@ const getTokenType = (token: string, nextToken?: string): string => {
     if (['.', ',', ';', ':'].includes(token)) return 'punctuation-separator';
     return 'operator';
   }
-  if (token.startsWith('//') || token.startsWith('/*') || token.startsWith('*') && token.endsWith('*/')) {
+  if (token.startsWith('//') || token.startsWith('/*') || (token.startsWith('*') && token.endsWith('*/'))) {
     return 'comment';
   }
+  // Ensure full string literals are captured by tokenization first.
+  // This regex-based tokenizer might split strings if they contain spaces or special chars not handled.
+  // Assuming tokenizer gives full strings like "'hello world'" or `"message: ${var}"`
   if ((token.startsWith("'") && token.endsWith("'")) || (token.startsWith('"') && token.endsWith('"')) || (token.startsWith('`') && token.endsWith('`'))) {
     return 'string';
   }
@@ -46,16 +52,19 @@ const getTokenType = (token: string, nextToken?: string): string => {
     return 'number';
   }
   if (token.match(/^[A-Z_][A-Z0-9_]*$/) && token.length > 1) {
-    return 'constant-convention';
+    return 'constant-convention'; // Typically uppercase like MY_CONSTANT
   }
+   // Heuristic for function name: an identifier followed by an opening parenthesis
   if (nextToken === '(' && token.match(/^[a-zA-Z_]\w*$/)) {
      return 'function-name';
   }
+  // General identifier (variables, other function names not caught by nextToken heuristic, etc.)
   if (token.match(/^[a-zA-Z_]\w*$/)) {
     return 'identifier';
   }
-  return 'default';
+  return 'default'; // Includes whitespace or other unclassified tokens
 };
+
 
 const getTokenStyle = (type: string): React.CSSProperties => {
   switch (type) {
@@ -68,54 +77,41 @@ const getTokenStyle = (type: string): React.CSSProperties => {
     case 'operator': return { color: 'var(--code-operator-color)' };
     case 'punctuation-bracket':
     case 'punctuation-separator': return { color: 'var(--code-punctuation-color)' };
-    case 'constant-convention': return { color: 'var(--code-number-color)', fontWeight: '500' };
+    case 'constant-convention': return { color: 'var(--code-number-color)', fontWeight: '500' }; // Same as number or distinct
     default: return { color: 'var(--code-default-color)' };
   }
 };
 
-const getLineContainingToken = (fullCode: string, token: string, tokenIndex: number): string => {
+// Helper to find the line containing a specific token instance.
+// This remains a challenge without a full AST or more detailed token info (line/char numbers from tokenizer).
+// The current implementation is a placeholder and might not be perfectly accurate for repeated tokens.
+const getLineContainingToken = (fullCode: string, tokenValue: string, spanElement: HTMLElement | null): string => {
+  if (!spanElement) return '';
+
+  // Attempt to find the line based on the span's text content relative to the full code.
+  // This is still naive. A better way would be if tokenizer provided line numbers.
   const lines = fullCode.split('\n');
-  let currentTokenCounter = 0; // This will count tokens, not characters
-  const codeTokensForLineCounting = fullCode.split(/(\s+|[().,{}[\];:\-+*/%&|^~<>?=]|\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g).filter(t => t !== undefined && t !== '');
-
-
-  for (const line of lines) {
-    // A more robust way to count tokens per line is needed if tokenIndex is based on global token array
-    // For simplicity, assuming tokenIndex is a character index or a pre-calculated token index within its line.
-    // This part needs robust token-to-line mapping.
-    // The current getTokenIndexInFullCode is also very basic.
-    // For now, if fullCode.indexOf(token) is on the line, assume it's the one. This is naive.
-    // A better approach would be to pre-tokenize and store line numbers with tokens.
-    
-    // A simplified placeholder for robust line finding.
-    // This will just return the first line containing the token text, which might be wrong for repeated tokens.
-    // A more sophisticated approach would involve passing the actual index of the token within the tokenized array.
-    if (line.includes(token)) return line.trim();
-  }
+  // A very rough way to estimate the token's position for line finding.
+  // This needs a more robust character-offset based search or a pre-computed token map.
+  // For now, we'll iterate and find the first line that contains the token and seems to be "around" the element.
+  // This is highly approximative.
   
-  // Fallback if the above naive search fails or for a more accurate (but complex) method:
-  // This part assumes tokenIndex is the index in the `codeTokensForLineCounting` array.
-  let count = 0;
-  for (const line of lines) {
-    const lineTokens = line.split(/(\s+|[().,{}[\];:\-+*/%&|^~<>?=]|\/\/[^\n]*|\/\*[\s\S]*?\*\/)/g).filter(t => t !== undefined && t !== '');
-    if (count <= tokenIndex && tokenIndex < count + lineTokens.length) {
-        // Check if this line actually contains the specific token instance we are interested in.
-        // This is still tricky without exact token instance tracking.
-        if (lineTokens.includes(token)) return line.trim();
-    }
-    count += lineTokens.length;
-  }
+  // Let's assume the tokenizer in CodeDisplay gives us unique spans for each token.
+  // A more reliable approach if we can't get precise char indices:
+  // Iterate lines, then tokenize each line and see if our token matches a token in that line
+  // sequentially. This is complex without re-tokenizing.
 
+  // Simplistic approach for now:
+  for (const line of lines) {
+      if (line.includes(tokenValue)) {
+          // This doesn't guarantee it's *this* instance of the token.
+          // A truly robust solution requires character offsets for each token.
+          return line.trim();
+      }
+  }
   return ''; // Fallback
 };
 
-
-// This helper is very basic and might not be accurate for repeated tokens.
-const getTokenIndexInFullCode = (fullCode: string, targetToken: string, tokenElement: HTMLSpanElement | null): number => {
-  // This function is problematic and not used reliably by getLineContainingToken.
-  // For a robust solution, tokenization should happen once, storing line and column numbers.
-  return -1; // Placeholder, as this function is not robust.
-};
 
 export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) => {
   const [explanation, setExplanation] = useState<string | null>(null);
@@ -123,21 +119,38 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const [lineExplanation, setLineExplanation] = useState<string | null>(null);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
+  const tokenRef = useRef<HTMLSpanElement>(null);
 
-  const tokenType = getTokenType(token, '');
+  // Determine token type. We don't have nextToken here easily without map/reduce in parent.
+  // So getTokenType's 'function-name' heuristic might be less effective if it relies on nextToken.
+  // For now, we'll pass undefined for nextToken.
+  // A better tokenizer in CodeDisplay could provide type directly.
+  const tokenType = getTokenType(token);
 
-  const handleFetchExplanation = async () => {
-    if (explanation || isLoading || !token.trim() || !isExplainable) {
-      return;
+  const isExplainable =
+    token.trim().length > 0 &&
+    (tokenType === 'function-name' || // Explain functions
+      tokenType === 'string' ||       // Explain strings
+      (tokenType === 'identifier' && !KEYWORDS.has(token)) || // Explain general identifiers (not keywords)
+      (tokenType === 'constant-convention' && !KEYWORDS.has(token)) // Explain constants
+    );
+
+
+  const handleFetchExplanation = async (segmentToExplain: string) => {
+    if (explanation || isLoading || !segmentToExplain.trim()) {
+      // If already have explanation, or loading, or segment is empty, do nothing
+      if (explanation && segmentToExplain === token) return; // Allow re-fetch if segment changes (e.g. for function body)
     }
-
+    
+    setExplanation(null); // Clear previous explanation for the new segment
     setIsLoading(true);
     try {
-      const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: fullCodeContext, codeSegment: token });
+      // For function names or strings, 'token' itself is the segment. AI prompt handles context.
+      const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: fullCodeContext, codeSegment: segmentToExplain });
       setExplanation(result.explanation);
     } catch (error) {
       console.error("Error fetching explanation:", error);
-      setExplanation("이 토큰에 대한 설명을 가져올 수 없습니다.");
+      setExplanation("이 부분에 대한 설명을 가져올 수 없습니다.");
     } finally {
       setIsLoading(false);
     }
@@ -145,13 +158,16 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
 
   const handleFetchLineExplanation = async (lineOfCode: string) => {
      if (lineExplanation || isLoading || !lineOfCode.trim()) {
-        return;
+        if (lineExplanation) return;
      }
+     setLineExplanation(null);
      setIsLoading(true);
      try {
+        // Assuming explainCodeLineAction expects { code: string, codeSegment: string (line) }
         const result = await explainCodeLineAction({ code: fullCodeContext, codeSegment: lineOfCode });
         setLineExplanation(result.explanation);
-     } catch (error) {
+     } catch (error)
+        {
         console.error("Error fetching line explanation:", error);
         setLineExplanation("이 라인에 대한 설명을 가져올 수 없습니다.");
      } finally {
@@ -159,51 +175,56 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
      }
   };
   
-  const isExplainable = token.trim().length > 0 && 
-                        !OPERATORS_PUNCTUATION.has(token) && 
-                        !KEYWORDS.has(token) &&
-                        tokenType !== 'comment' &&
-                        tokenType !== 'string' &&
-                        tokenType !== 'number';
+  // Effect to reset explanation when token changes, to avoid showing stale explanation
+  useEffect(() => {
+    setExplanation(null);
+    setLineExplanation(null);
+    // setIsTooltipOpen(false); // Optionally close tooltip if token under mouse changes significantly
+  }, [token, fullCodeContext]);
+
+
+  const onMouseEnterHandler = (e: React.MouseEvent<HTMLSpanElement>) => {
+    if (!isExplainable) return;
+
+    const shiftKeyActive = e.shiftKey;
+    setIsShiftPressed(shiftKeyActive); // Update shift state
+
+    if (shiftKeyActive) {
+      const line = getLineContainingToken(fullCodeContext, token, tokenRef.current);
+      if (line) {
+        if (!lineExplanation) { // Fetch only if not already fetched for this line
+            handleFetchLineExplanation(line);
+        }
+      }
+    } else {
+        // For tokenType 'string' or 'function-name', 'token' is the specific segment.
+        // The AI prompt is now designed to handle these cases appropriately.
+        if (!explanation) { // Fetch only if not already fetched for this token
+            handleFetchExplanation(token);
+        }
+    }
+  };
+
 
   if (token === '\n') {
     return <br />;
   }
-  if (token.trim() === '' && token !== '\n') {
+  // Preserve whitespace tokens as they are crucial for formatting
+  if (token.match(/^\s+$/) && token !== '\n') {
     return <span style={{whiteSpace: 'pre'}}>{token}</span>;
   }
+   // Handle empty strings that might result from tokenizer if not filtered out upstream
+  if (token.trim() === '' && token !== '\n') {
+     return <span>{token}</span>; // Render non-newline whitespace or empty tokens
+  }
+
 
   const content = (
     <span
+      ref={tokenRef}
       style={getTokenStyle(tokenType)}
       className={isExplainable ? "cursor-pointer hover:underline decoration-accent decoration-dotted underline-offset-2" : ""}
-      onMouseEnter={isExplainable ? (e) => {
-        const shiftKeyActive = e.shiftKey;
-        setIsShiftPressed(shiftKeyActive);
-        if (shiftKeyActive) {
-          // getLineContainingToken is not robust enough. A better approach would be needed for accurate line detection.
-          // For now, we'll use a placeholder or a very simplified line detection.
-          // A truly robust solution requires tokenizing with line numbers upfront.
-          // Let's assume for now we want to explain the token itself, even on shift-hover, if line detection is poor.
-          // Or, provide a very naive line:
-          const lines = fullCodeContext.split('\n');
-          let currentTokenCharIndex = 0; // This is a placeholder index
-          // This is a naive way to find which line the current token (character sequence) is on
-          let foundLine = "";
-          for(const l of lines) {
-            if(l.includes(token)) { // This is still not perfect for repeated tokens on different lines
-              foundLine = l.trim();
-              break;
-            }
-          }
-          if (foundLine) {
-            handleFetchLineExplanation(foundLine);
-          } else {
-             handleFetchLineExplanation(token); // Fallback to explain token if line not found
-          }
-        } else {
-          handleFetchExplanation();
-        }} : undefined}
+      onMouseEnter={isExplainable ? onMouseEnterHandler : undefined}
     >
       {token}
     </span>
@@ -212,6 +233,21 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
   if (!isExplainable) {
     return content;
   }
+  
+  const tooltipText = () => {
+    if (isLoading) {
+      return (
+        <div className="space-y-1.5 p-1">
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+      );
+    }
+    if (isShiftPressed) {
+      return lineExplanation || `Shift + 마우스를 올려 "${token}"(이)가 포함된 라인 설명을 가져오는 중...`;
+    }
+    return explanation || `"${token}" 설명을 보려면 마우스를 올리세요.`;
+  };
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -219,22 +255,12 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
         <TooltipTrigger asChild>
           {content}
         </TooltipTrigger>
-        {isTooltipOpen && (
+        {isTooltipOpen && ( // Only render content if tooltip is open
           <TooltipContent side="top" align="start" className="max-w-md bg-popover text-popover-foreground p-3 rounded-md border shadow-xl text-sm">
-            {isLoading ? (
-              <div className="space-y-1.5 p-1">
-                <Skeleton className="h-4 w-48" />
-                <Skeleton className="h-4 w-32" />
-              </div>
-            ) : (
-              isShiftPressed ? 
-              (lineExplanation || `Shift + 마우스를 올려 "${token}"(이)가 포함된 라인 설명을 보세요. (라인 감지 기능 개선 중)`) : 
-              (explanation || `"${token}" 설명을 보려면 마우스를 올리세요.`)
-            )}
+            {tooltipText()}
           </TooltipContent>
         )}
       </Tooltip>
     </TooltipProvider>
   );
 };
-
