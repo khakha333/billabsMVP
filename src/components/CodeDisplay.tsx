@@ -20,22 +20,31 @@ interface CodeDisplayProps {
 const tokenizeCode = (code: string): string[] => {
   if (!code) return [];
 
+  // Regex to capture:
+  // 1. Full comments (//, /* */, #)
+  // 2. Full string literals ("", '', ``)
+  // 3. Keywords (as whole words)
+  // 4. Identifiers (variable names, function names)
+  // 5. Numbers (integers, decimals)
+  // 6. Multi-character operators first, then single character operators/punctuation
+  // 7. Whitespace
+  // 8. Any other single character (fallback)
   const tokenPatterns = [
-    /(?:\/\/[^\n]*|\/\*(?:[\s\S]*?)\*\/)/, 
-    /(?:#.*)/, 
-    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, 
-    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined)\b/,
-    /[a-zA-Z_]\w*/, 
-    /\d+(?:\.\d*)?|\.\d+/, 
-    />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*/%&|^~<>?=]/, 
-    /\s+/, 
-    /./, 
+    /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, // Comments
+    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, // String literals
+    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined)\b/, // Keywords
+    /[a-zA-Z_]\w*/, // Identifiers
+    /\d+(?:\.\d*)?|\.\d+/, // Numbers
+    />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*\/%&|^~<>?=]/, // Operators and Punctuation (multi-char first)
+    /\s+/, // Whitespace
+    /./, // Any other character
   ];
   const combinedRegex = new RegExp(tokenPatterns.map(r => `(${r.source})`).join('|'), 'g');
 
   const tokens: string[] = [];
   let match;
   while ((match = combinedRegex.exec(code)) !== null) {
+    // Find the first capturing group that matched
     for (let i = 1; i < match.length; i++) {
       if (match[i] !== undefined) {
         tokens.push(match[i]);
@@ -48,36 +57,35 @@ const tokenizeCode = (code: string): string[] => {
 
 const extractFunctionNameFromLine = (line: string): string | null => {
   let match;
+
   // 1. function keyword: function foo(...), async function foo(...)
   match = line.match(/^\s*(async\s+)?function\s+([a-zA-Z_][\w$]*)\s*\(/);
   if (match) return match[2];
 
-  // 2. Arrow functions: const foo = (...) =>, const foo = async (...) =>
+  // 2. Arrow functions assigned to variables: const foo = (...) =>, let bar = async () =>
   match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_][\w$]*)\s*=\s*(?:async\s*)?\s*\(.*\)\s*=>/);
   if (match) return match[1];
 
-  // 3. Function expressions: const foo = function(...), const foo = async function(...)
-  match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_][\w$]*)\s*=\s*(async\s+)?function\s*(?:\w*\s*)?\(/);
-  if (match) return match[1];
-  
-  // 4. Object methods: foo: function(...), foo: async function(...), foo(...) { directly (ES6 method syntax)
-  match = line.match(/^\s*([a-zA-Z_][\w$]*)\s*:\s*(?:async\s+)?function/);
+  // 3. Function expressions assigned to variables: const foo = function(...), let bar = async function baz(...)
+  match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_][\w$]*)\s*=\s*(async\s+)?function(?:\s+([a-zA-Z_][\w$]*))?\s*\(/);
+  if (match) return match[1]; // Return the variable name
+
+  // 4. Object methods (colon syntax): foo: function(...), bar: async function()
+  match = line.match(/^\s*([a-zA-Z_][\w$]*)\s*:\s*(async\s+)?function/);
   if (match) return match[1];
 
-  // ES6 method syntax / class methods: myMethod(...) { or get myProp(...) { or set myProp(...) { or *myGenerator(...) {
-  match = line.match(/^\s*(?:get\s+|set\s+|\*)?([a-zA-Z_][\w$]*)\s*\(/);
+  // 5. ES6 method syntax in objects/classes: myMethod(...), get myProp(){}, set myProp(val){}, *myGenerator()
+  //    Also captures class constructors: constructor()
+  match = line.match(/^\s*(?:static\s+)?(?:get\s+|set\s+|\*)?([a-zA-Z_][\w$]*|constructor)\s*\(/);
   if (match) {
     const potentialName = match[1];
-    if (!['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'constructor'].includes(potentialName)) {
-      // Check if it's likely a definition by looking for an opening brace on the same line (potentially after args)
-      if (line.trim().endsWith('{') || line.match(/\)\s*\{/)) {
-         return potentialName;
+    // Exclude common control flow keywords to avoid false positives like if (...) {
+    if (!['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof'].includes(potentialName)) {
+      // Check if the line likely ends with an opening brace for a function body
+      if (line.match(/\)\s*\{$/) || line.match(/\)\s*[^=]*\{$/) || (potentialName ==='constructor' && line.match(/\)\s*\{$/)) ) {
+        return potentialName;
       }
     }
-  }
-  // Class constructor
-  if (line.match(/^\s*constructor\s*\(/) && (line.trim().endsWith('{') || line.match(/\)\s*\{/)) ) {
-    return 'constructor';
   }
   
   return null;
@@ -93,6 +101,8 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   const [explanationForDialog, setExplanationForDialog] = useState<string | null>(null);
   const [isLoadingDialogExplanation, setIsLoadingDialogExplanation] = useState(false);
   const [showExplanationDialog, setShowExplanationDialog] = useState(false);
+  const [currentDialogTitle, setCurrentDialogTitle] = useState<string>("코드 설명");
+
 
   const handleMouseUp = () => {
     if (!codeDisplayRef.current) return;
@@ -101,10 +111,10 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     const text = selection?.toString().trim();
 
     if (text && text.length > 0 && selection && selection.anchorNode && codeDisplayRef.current.contains(selection.anchorNode) ) {
-      setSelectedTextForDialog(text);
+      setSelectedTextForDialog(text); // This is the actual selected segment for explanation
       const range = selection.getRangeAt(0);
       setSelectionRect(range.getBoundingClientRect());
-      setExplanationForDialog(null); // Clear previous explanation
+      setExplanationForDialog(null); 
     } else {
       setSelectedTextForDialog(null);
       setSelectionRect(null);
@@ -116,19 +126,17 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [code]); // Re-add listener if code changes
+  }, [code]); 
 
-  const requestExplanationForSegment = async (segment: string, isSelection: boolean) => {
+  const requestExplanationForSegment = async (segment: string, titleHint: string) => {
     if (!segment) return;
     setIsLoadingDialogExplanation(true);
     setExplanationForDialog(null); 
-    if (isSelection) { // Only set selectedTextForDialog if it's from a user text selection
-        setSelectedTextForDialog(segment);
-    } else { // If it's from a function button, selectedTextForDialog is the function name
-        setSelectedTextForDialog(segment); // For dialog title purposes
-    }
+    setCurrentDialogTitle(titleHint ? `"${titleHint}" 설명` : "코드 설명");
     setShowExplanationDialog(true);
     try {
+      // The 'segment' here is what the AI will analyze. 
+      // 'titleHint' is just for the dialog title.
       const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: code, codeSegment: segment });
       setExplanationForDialog(result.explanation);
     } catch (error) {
@@ -140,12 +148,16 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   };
   
   const handleExplainFunctionByName = (functionName: string) => {
-    requestExplanationForSegment(functionName, false);
+    // For function explanation, the 'segment' sent to AI is the function name.
+    // The AI is expected to find the function body in the 'fullCodeContext'.
+    setSelectedTextForDialog(null); // Clear any text selection
+    requestExplanationForSegment(functionName, functionName);
   };
 
   const handleExplainSelection = () => {
     if (selectedTextForDialog) {
-      requestExplanationForSegment(selectedTextForDialog, true);
+      // For selection, the 'segment' is the selected text itself.
+      requestExplanationForSegment(selectedTextForDialog, selectedTextForDialog);
     }
   };
 
@@ -153,13 +165,27 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   const getExplainButtonStyle = (): React.CSSProperties => {
     if (!selectionRect || !codeDisplayRef.current) return { display: 'none' };
     const containerRect = codeDisplayRef.current.getBoundingClientRect();
-    let top = selectionRect.bottom - containerRect.top + 5;
-    let left = selectionRect.right - containerRect.left - 80;
+    
+    // Position relative to the codeDisplayRef container
+    let top = selectionRect.bottom - containerRect.top + window.scrollY + 5;
+    let left = selectionRect.right - containerRect.left + window.scrollX - 80; // Adjust for button width
+
+    // Clamp button position within the codeDisplayRef container bounds
     const buttonHeight = 36; 
     const buttonWidth = 160; 
-    top = Math.max(5, Math.min(top, containerRect.height - buttonHeight - 5));
-    left = Math.max(5, Math.min(left, containerRect.width - buttonWidth - 5));
-    return { position: 'absolute', top: `${top}px`, left: `${left}px`, zIndex: 10 };
+
+    // Ensure the button does not overflow the container
+    // The scrollY/scrollX were removed because the containerRect is already relative to viewport for getBoundingClientRect
+    top = Math.max(5, Math.min(selectionRect.bottom - containerRect.top + 5, containerRect.height - buttonHeight - 5));
+    left = Math.max(5, Math.min(selectionRect.right - containerRect.left - buttonWidth / 2 , containerRect.width - buttonWidth - 5));
+
+
+    return { 
+      position: 'absolute', 
+      top: `${top}px`, 
+      left: `${left}px`, 
+      zIndex: 10 
+    };
   };
 
 
@@ -182,14 +208,14 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
                   <div className="line-prefix w-12 flex-shrink-0 text-right pr-2 text-muted-foreground text-xs select-none pt-[1px]">
                     {lineIndex + 1}
                   </div>
-                  <div className="line-button-container w-6 flex-shrink-0 pt-[1px]">
+                  <div className="line-button-container w-6 flex-shrink-0 pt-[1px] flex items-center justify-center">
                     {functionName && (
                        <Button
                         variant="ghost"
                         size="icon"
                         className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
                         onClick={() => handleExplainFunctionByName(functionName)}
-                        title={`함수 ${functionName} 설명 보기`}
+                        title={`함수 "${functionName}" 설명 보기`}
                       >
                         <Wand2 className="h-3.5 w-3.5" />
                       </Button>
@@ -223,8 +249,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       <Dialog open={showExplanationDialog} onOpenChange={(isOpen) => {
           setShowExplanationDialog(isOpen);
           if (!isOpen) {
-             setSelectedTextForDialog(null); // Clear selection context when dialog closes
-             setSelectionRect(null);       // Clear selection rect as well
+             // Do not clear selectedTextForDialog here if it was for a function button.
+             // Only clear if it was a text selection that is now closed.
+             // However, the popup button logic itself might need selectedText to be null for it to disappear.
+             // Let's clear it for now to ensure the button disappears.
+             setSelectedTextForDialog(null); 
+             setSelectionRect(null);       
              setExplanationForDialog(null);
           }
         }}>
@@ -232,12 +262,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
                 <Wand2 className="h-5 w-5 text-primary" />
-                코드 설명
+                {currentDialogTitle}
             </DialogTitle>
-            <DialogDescription>AI가 생성한 코드 조각({selectedTextForDialog ? `'${selectedTextForDialog}'` : '함수'})에 대한 설명입니다.</DialogDescription>
+            <DialogDescription>AI가 생성한 코드 조각에 대한 설명입니다.</DialogDescription>
           </DialogHeader>
           <div className="flex-grow overflow-y-auto pr-2 space-y-4 py-2">
-            {selectedTextForDialog && ( // Only show preview if it was user-selected text
+            {selectedTextForDialog && ( 
                 <div className="selected-code-preview mb-4">
                 <h4 className="text-sm font-semibold mb-1 text-muted-foreground">설명 요청한 코드:</h4>
                 <ScrollArea className="max-h-40 w-full rounded-md border bg-muted p-2">
