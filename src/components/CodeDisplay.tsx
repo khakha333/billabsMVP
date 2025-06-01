@@ -22,7 +22,8 @@ const tokenizeCode = (code: string): string[] => {
   if (!code) return [];
 
   const tokenPatterns = [
-    /(?:\/\/[^\n]*|\/\*(?:[\s\S]*?)\*\/)/, // Comments (line and block)
+    /(?:\/\/[^\n]*|\/\*(?:[\s\S]*?)\*\/)/, // JS/TS Comments (line and block)
+    /(?:#.*)/, // Python-style or similar comments starting with #
     /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, // String literals
     // Keywords (ensure \b for whole word matching)
     /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined)\b/,

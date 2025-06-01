@@ -40,7 +40,7 @@ const getTokenType = (token: string): string => {
     return 'string';
   }
   // Check for full comments, as they are now single tokens
-  if (token.startsWith('//') || token.startsWith('/*') && token.endsWith('*/')) {
+  if (token.startsWith('//') || (token.startsWith('/*') && token.endsWith('*/')) || token.startsWith('#')) {
     return 'comment';
   }
   if (OPERATORS_PUNCTUATION.has(token)) {
@@ -90,8 +90,22 @@ const getTokenStyle = (type: string): React.CSSProperties => {
 const getLineContainingToken = (fullCode: string, tokenValue: string, spanElement: HTMLElement | null): string => {
   if (!spanElement) return '';
   const lines = fullCode.split('\n');
+  // A more robust way to find the line might involve character offsets or a more complex search
+  // if the tokenValue itself can span multiple lines (e.g. multi-line comments/strings).
+  // For single-line tokens or first line of multi-line, this should be okay.
+  const ances = spanElement.parentElement;
+  if(ances) {
+    const lineNumStr = ances.dataset.lineNuber; // Assuming we add data-line-number to parent <code> or <pre>
+    if(lineNumStr) {
+      const lineNum = parseInt(lineNumStr, 10);
+      if(!isNaN(lineNum) && lineNum > 0 && lineNum <= lines.length) {
+        return lines[lineNum-1].trim();
+      }
+    }
+  }
+
   for (const line of lines) {
-      if (line.includes(tokenValue)) {
+      if (line.includes(tokenValue)) { // This might be problematic if token is very common or part of a larger construct
           return line.trim();
       }
   }
@@ -106,29 +120,29 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
   const [lineExplanation, setLineExplanation] = useState<string | null>(null);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const tokenRef = useRef<HTMLSpanElement>(null);
-  const [explainedSegment, setExplainedSegment] = useState<string | null>(null);
+  const [explainedSegment, setExplainedSegment] = useState<string | null>(null); // Store what was actually explained
 
   const tokenType = getTokenType(token);
 
   const isExplainable =
     token.trim().length > 0 &&
-    (tokenType === 'identifier' || // General identifiers, could be func names, vars
-      tokenType === 'string' ||       // Full strings are explainable
-      tokenType === 'comment' ||      // Full comments are explainable
+    (tokenType === 'identifier' ||
+      tokenType === 'string' ||
+      tokenType === 'comment' || // Now includes '#' comments
       tokenType === 'constant-convention'
     ) && !KEYWORDS.has(token);
 
 
   const handleFetchExplanation = async (segmentToExplain: string) => {
-    if (segmentToExplain === explainedSegment && explanation && !isLoading) {
-      return; 
-    }
-    if (isLoading && segmentToExplain === explainedSegment) {
+    if (isLoading && segmentToExplain === explainedSegment) { // Already loading this exact segment
       return;
+    }
+    if (!isLoading && segmentToExplain === explainedSegment && explanation) { // Already have explanation for this exact segment
+      return; 
     }
     
     setExplanation(null); 
-    setExplainedSegment(segmentToExplain);
+    setExplainedSegment(segmentToExplain); // Set what we are fetching
     setIsLoading(true);
     try {
       const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: fullCodeContext, codeSegment: segmentToExplain });
@@ -142,16 +156,17 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
   };
 
   const handleFetchLineExplanation = async (lineOfCode: string) => {
-     if (lineOfCode === explainedSegment && lineExplanation && !isLoading) {
-        return;
-     }
      if (isLoading && lineOfCode === explainedSegment) {
         return;
      }
+     if (!isLoading && lineOfCode === explainedSegment && lineExplanation) {
+        return;
+     }
      setLineExplanation(null);
-     setExplainedSegment(lineOfCode);
+     setExplainedSegment(lineOfCode); // Set what we are fetching
      setIsLoading(true);
      try {
+        // Ensure the input to explainCodeLineAction matches ExplainCodeLineInput (alias for ExplainCodeSegmentInput)
         const result = await explainCodeLineAction({ code: fullCodeContext, codeSegment: lineOfCode });
         setLineExplanation(result.explanation);
      } catch (error) {
@@ -163,6 +178,7 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
   };
   
   useEffect(() => {
+    // Reset explanations if token or context changes to avoid showing stale data.
     setExplanation(null);
     setLineExplanation(null);
     setExplainedSegment(null);
@@ -178,14 +194,14 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
     if (shiftKeyActive) {
       const line = getLineContainingToken(fullCodeContext, token, tokenRef.current);
       if (line) {
+        // Only fetch if it's a new line or no explanation yet for this line
         if (line !== explainedSegment || !lineExplanation) { 
             handleFetchLineExplanation(line);
         }
       }
     } else {
-      // Since `token` is now the full string or comment if `tokenType` is 'string' or 'comment',
-      // we can pass `token` directly as the segment to explain.
-      // For identifiers, `token` is also the segment (e.g. function name, variable).
+      // `token` is already the full string, comment, or identifier.
+      // Only fetch if it's a new token or no explanation yet for this token.
       if (token !== explainedSegment || !explanation) { 
         handleFetchExplanation(token);
       }
@@ -197,8 +213,6 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
     return <br />;
   }
   if (token.match(/^\s+$/) && token !== '\n') {
-    // Preserve whitespace tokens for formatting, but they are not explainable.
-    // Use `whiteSpace: 'pre'` to ensure multiple spaces are rendered correctly.
     return <span style={{whiteSpace: 'pre'}}>{token}</span>;
   }
   if (token.trim() === '' && token !== '\n') {
@@ -235,25 +249,40 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
     if (currentText) {
       return currentText;
     }
+    // Fallback messages if content isn't loaded yet, or if still loading a different segment
     if (isShiftPressed) {
-        return `Shift + 마우스를 올려 "${token}"(이)가 포함된 라인 설명을 가져오는 중... (또는 이미 가져옴)`;
+        if (explainedSegment && explainedSegment !== getLineContainingToken(fullCodeContext, token, tokenRef.current)) {
+             return `Shift + 마우스를 올려 "${token}"(이)가 포함된 라인 설명을 가져오는 중...`;
+        }
+        return `Shift + 마우스를 올려 라인 설명을 가져오세요.`;
     }
-    return `"${token}" 설명을 보려면 마우스를 올리세요. (또는 이미 가져옴)`;
+    if (explainedSegment && explainedSegment !== token) {
+        return `"${token}" 설명을 가져오는 중...`;
+    }
+    return `"${token}" 설명을 보려면 마우스를 올리세요.`;
   };
 
   return (
     <TooltipProvider delayDuration={100}>
       <Tooltip open={isTooltipOpen} onOpenChange={(open) => {
         setIsTooltipOpen(open);
-        if (open && isExplainable) { // Fetch explanation when tooltip is about to open, if not already fetched
-          const currentSegment = isShiftPressed ? getLineContainingToken(fullCodeContext, token, tokenRef.current) : token;
-          if (isShiftPressed) {
-            if (currentSegment && (currentSegment !== explainedSegment || !lineExplanation)) {
-              handleFetchLineExplanation(currentSegment);
-            }
-          } else {
-            if (currentSegment !== explainedSegment || !explanation) {
-              handleFetchExplanation(currentSegment);
+        if (open && isExplainable) { 
+          const shiftKeyActive = (window.event as MouseEvent)?.shiftKey; // Check current shift state
+          setIsShiftPressed(!!shiftKeyActive); // Update state based on current event
+
+          const currentSegmentToExplain = shiftKeyActive 
+            ? getLineContainingToken(fullCodeContext, token, tokenRef.current) 
+            : token;
+
+          if (currentSegmentToExplain) {
+            if (shiftKeyActive) {
+              if (currentSegmentToExplain !== explainedSegment || !lineExplanation) {
+                handleFetchLineExplanation(currentSegmentToExplain);
+              }
+            } else {
+              if (currentSegmentToExplain !== explainedSegment || !explanation) {
+                handleFetchExplanation(currentSegmentToExplain);
+              }
             }
           }
         }

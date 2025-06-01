@@ -19,7 +19,7 @@ const ExplainCodeSegmentInputSchema = z.object({
 export type ExplainCodeSegmentInput = z.infer<typeof ExplainCodeSegmentInputSchema>;
 
 const ExplainCodeSegmentOutputSchema = z.object({
-  explanation: z.string().describe('The AI-generated explanation of the code segment.'),
+  explanation: z.string().describe('The AI-generated explanation of the code segment, written in Korean.'),
 });
 export type ExplainCodeSegmentOutput = z.infer<typeof ExplainCodeSegmentOutputSchema>;
 
@@ -35,10 +35,11 @@ const prompt = ai.definePrompt({
 Your task is to explain the provided 'Code Segment' within the context of the 'Full Code'.
 
 Instructions:
-1. If the 'Code Segment' is a string literal (e.g., "text" or 'text'), explain its purpose or meaning as a single unit, considering its role in the 'Full Code'.
-2. If the 'Code Segment' appears to be a function name, identify the ENTIRE function (including its signature, body, parameters, and return value if applicable) within the 'Full Code' and explain its overall purpose, how it works, its parameters, and what it returns.
-3. For any other 'Code Segment' (like a variable, a keyword in context, or a user-selected block of code), provide a concise explanation of what that specific piece of code does or represents within the 'Full Code'.
-4. When analyzing any code, interpret content within quotation marks (e.g., "this is a string" or 'this is also a string') as a single phrase or sentence unit, especially if it seems to represent user-facing text, configuration values, or important identifiers.
+1.  If the 'Code Segment' is a string literal (e.g., "text" or 'text'), explain its purpose or meaning as a single unit, considering its role in the 'Full Code'.
+2.  If the 'Code Segment' appears to be a function name, identify the ENTIRE function (including its signature, body, parameters, and return value if applicable) within the 'Full Code' and explain its overall purpose, how it works, its parameters, and what it returns.
+3.  For any other 'Code Segment' (like a variable, a keyword in context, a user-selected block of code, or a comment including those starting with '#'), provide a concise explanation of what that specific piece of code does or represents within the 'Full Code'.
+4.  When analyzing any code, interpret content within quotation marks (e.g., "this is a string" or 'this is also a string') and comments (e.g. // a comment, /* block comment */, # python comment) as a single phrase or sentence unit, especially if it seems to represent user-facing text, configuration values, important identifiers, or developer notes.
+5.  All explanations MUST be in Korean.
 
 Full Code:
 \`\`\`
@@ -50,7 +51,7 @@ Code Segment:
 {{{codeSegment}}}
 \`\`\`
 
-Explanation:
+Explanation (in Korean):
 `,
 });
 
@@ -61,10 +62,7 @@ const explainCodeSegmentFlow = ai.defineFlow(
     outputSchema: ExplainCodeSegmentOutputSchema,
   },
   async input => {
-    // Ensure very long code segments are handled gracefully, perhaps truncated if necessary for the prompt,
-    // though the primary context is the full code. For now, we pass it as is.
     const {output} = await prompt(input);
     return output!;
   }
 );
-
