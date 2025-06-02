@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef, type RefObject } from 'react';
+import { useState, useRef, useEffect, type RefObject } from 'react';
 import type React from 'react';
 import { Header } from '@/components/layout/Header';
 import { CodeInputArea } from '@/components/CodeInputArea';
@@ -23,19 +23,31 @@ export default function CodeInsightsPage() {
   const { toast } = useToast();
 
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
-  const chatInterfaceRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null); // Ref for the visible chat container
+
+  const [isLgScreen, setIsLgScreen] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsLgScreen(window.innerWidth >= 1024); // Tailwind's 'lg' breakpoint is 1024px
+    };
+    handleResize(); // Initial check
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
 
   const focusChatInput = (prefillText?: string) => {
-    chatInterfaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    chatContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     setTimeout(() => {
         chatInputRef.current?.focus();
         if (prefillText && chatInputRef.current) {
             chatInputRef.current.value = prefillText;
+            // Dispatch input event to ensure any state tied to textarea value updates
             const event = new Event('input', { bubbles: true });
             chatInputRef.current.dispatchEvent(event);
         }
-    }, 100);
+    }, 100); // Timeout to ensure scroll completes before focus
   };
 
 
@@ -117,41 +129,79 @@ ${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.le
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
         <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row gap-6">
-          {/* Left Column: CodeInput, AnalysisSummary, CodeDisplay */}
+          {/* ---- Column 1 (Left on LG / First main block on SM) ---- */}
           <div className="lg:w-1/3 flex flex-col gap-6">
-            <div className="flex-grow-[2] h-1/2 lg:h-auto">
+            {/* Code Input Area */}
+            <div className="h-auto">
               <CodeInputArea onAnalyze={handleAnalyzeCode} isLoading={isLoadingAnalysis} />
             </div>
-            <div className="flex-grow-[1] h-1/4 lg:h-auto">
+            {/* Analysis Summary Display */}
+            <div className="h-auto">
               <AnalysisSummaryDisplay analysisResult={analysisResult} isLoading={isLoadingAnalysis} />
             </div>
-            {/* Interactive Code View (CodeDisplay) or its placeholder */}
-            {displayedCode ? (
-              <div className="flex-grow-[3] h-1/4 lg:h-auto min-h-[300px] lg:min-h-[400px]">
+
+            {/* On LG screens: CodeChatInterface is here */}
+            <div
+              ref={isLgScreen ? chatContainerRef : null}
+              className="hidden lg:flex flex-grow flex-col min-h-0" // flex-grow to take available space
+            >
+              {inputCode ? (
+                <CodeChatInterface currentCode={inputCode} chatInputRef={chatInputRef} className="flex-grow" />
+              ) : (
+                <div className="flex-grow flex items-center justify-center bg-card rounded-lg shadow h-full min-h-[200px] lg:min-h-[300px]">
+                  <p className="text-muted-foreground text-lg italic p-8 text-center">
+                    코드를 분석하면 여기에 AI 채팅 인터페이스가 표시됩니다.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* On SM screens: CodeDisplay is here */}
+            <div className="lg:hidden min-h-[300px] sm:min-h-[400px]">
+              {displayedCode ? (
                 <CodeDisplay code={displayedCode} />
-              </div>
-            ) : (
-              <div className="flex-grow-[3] h-1/4 lg:h-auto min-h-[300px] lg:min-h-[400px] flex items-center justify-center bg-card rounded-lg shadow">
-                <p className="text-muted-foreground text-lg italic p-8 text-center">
-                  코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
-                </p>
-              </div>
-            )}
+              ) : (
+                <div className="flex items-center justify-center bg-card rounded-lg shadow h-full">
+                  <p className="text-muted-foreground text-lg italic p-8 text-center">
+                    코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Right Column: AI Code Chat or its placeholder */}
-          <div className="lg:w-2/3 flex-grow min-h-[400px] lg:min-h-0 flex flex-col">
-            {inputCode ? (
-              <div ref={chatInterfaceRef} className="flex-grow flex flex-col min-h-0"> {/* Ensure chatInterfaceRef is on the container that's always rendered or its placeholder */}
-                <CodeChatInterface currentCode={inputCode} chatInputRef={chatInputRef} className="flex-grow" />
-              </div>
-            ) : (
-              <div ref={chatInterfaceRef} className="flex-grow flex items-center justify-center bg-card rounded-lg shadow">
-                <p className="text-muted-foreground text-lg italic p-8 text-center">
-                  코드를 분석하면 여기에 AI 채팅 인터페이스가 표시됩니다.
-                </p>
-              </div>
-            )}
+          {/* ---- Column 2 (Right on LG / Second main block on SM) ---- */}
+          <div className="lg:w-2/3 flex flex-col"> {/* This column will contain one main item */}
+            {/* On SM screens: CodeChatInterface is here */}
+            <div
+              ref={!isLgScreen ? chatContainerRef : null}
+              className="lg:hidden flex-grow flex flex-col min-h-[400px]"
+            >
+              {inputCode ? (
+                <div className="flex-grow flex flex-col min-h-0"> {/* Inner div to manage chat height */}
+                   <CodeChatInterface currentCode={inputCode} chatInputRef={chatInputRef} className="flex-grow" />
+                </div>
+              ) : (
+                <div className="flex-grow flex items-center justify-center bg-card rounded-lg shadow h-full">
+                  <p className="text-muted-foreground text-lg italic p-8 text-center">
+                    코드를 분석하면 여기에 AI 채팅 인터페이스가 표시됩니다.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* On LG screens: CodeDisplay is here */}
+            <div className="hidden lg:flex flex-grow flex-col min-h-[400px] lg:min-h-0"> {/* flex-grow for LG */}
+              {displayedCode ? (
+                 <CodeDisplay code={displayedCode} />
+              ) : (
+                <div className="flex-grow flex items-center justify-center bg-card rounded-lg shadow h-full">
+                  <p className="text-muted-foreground text-lg italic p-8 text-center">
+                    코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </main>
         <footer className="py-4 text-center text-sm text-muted-foreground border-t">
