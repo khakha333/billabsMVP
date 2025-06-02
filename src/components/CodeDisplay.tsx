@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, Wand2, MessageSquareText, MessageSquarePlus } from 'lucide-react';
 import { explainCodeSegmentAction } from '@/lib/actions';
 import type { ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
-import { useChatContext } from '@/contexts/ChatContext'; // Import chat context
+import { useChatContext } from '@/contexts/ChatContext';
 
 interface CodeDisplayProps {
   code: string;
@@ -22,14 +22,14 @@ const tokenizeCode = (code: string): string[] => {
   if (!code) return [];
 
   const tokenPatterns = [
-    /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, 
-    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, 
-    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined|def)\b/,
-    /[a-zA-Z_]\w*/, 
-    /\d+(?:\.\d*)?|\.\d+/, 
-    />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*\/%&|^~<>?=]/, 
-    /\s+/, 
-    /./, 
+    /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, // Comments (//, /* */, #)
+    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, // String literals
+    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined|def|print|exit)\b/, // Keywords (added def, print, exit for basic Python)
+    /[a-zA-Z_]\w*/, // Identifiers
+    /\d+(?:\.\d*)?|\.\d+/, // Numbers
+    />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*\/%&|^~<>?=]/, // Operators and Punctuation
+    /\s+/, // Whitespace
+    /./, // Any other character (fallback)
   ];
   const combinedRegex = new RegExp(tokenPatterns.map(r => `(${r.source})`).join('|'), 'g');
 
@@ -39,7 +39,7 @@ const tokenizeCode = (code: string): string[] => {
     for (let i = 1; i < m.length; i++) {
       if (m[i] !== undefined) {
         tokens.push(m[i]);
-        break; 
+        break;
       }
     }
   }
@@ -50,49 +50,42 @@ const extractFunctionNameFromLine = (line: string): string | null => {
   let match;
   const commonMethodNamesToExcludeForJsTs = [
     'print', 'exit', 'log', 'warn', 'error', 'info', 'debug', 'assert',
-    'toString', 'valueOf', 'constructor', 
+    'toString', 'valueOf', 'constructor',
   ];
+  const syntaxKeywordsToExclude = ['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'new', 'delete', 'void', 'instanceof', 'with'];
 
-  match = line.match(/^\s*def\s+([a-zA-Z_]\w*)\s*\([^)]*\)\s*:/);
-  if (match) return match[1]; 
 
+  // Pattern 1: Python `def`
+  match = line.match(/^\s*def\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)\s*:/);
+  if (match) return match[1];
+
+  // Pattern 2: Standard `function` keyword (named or anonymous if assigned)
   match = line.match(/^\s*(async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/);
-  if (match) return match[2]; 
+  if (match) return match[2];
 
+  // Pattern 3: Arrow functions assigned to const/let/var
   match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s*)?\(.*\)\s*=>/);
   if (match) return match[1];
 
-  match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(async\s+)?function(?:\s+([a-zA-Z_$][\w$]*))?\s*\(/);
-  if (match) return match[1];
-
-  match = line.match(/^\s*([a-zA-Z_$][\w$]*)\s*:\s*(async\s+)?function\s*\(/);
-   if (match) {
+  // Pattern 4: Function expressions assigned to const/let/var or object properties
+  match = line.match(/^\s*(?:(?:const|let|var)\s+)?([a-zA-Z_$][\w$]*)\s*[:=]\s*(?:async\s+)?function(?:\s+[a-zA-Z_$][\w$]*)?\s*\(/);
+  if (match) {
     const potentialName = match[1];
-    if (!commonMethodNamesToExcludeForJsTs.includes(potentialName)) {
-      return potentialName;
+    if (!commonMethodNamesToExcludeForJsTs.includes(potentialName) && !syntaxKeywordsToExclude.includes(potentialName)) {
+        return potentialName;
     }
   }
   
-  const es6MethodRegex = /^\s*(static\s+)?(async\s+)?(get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(([^)]*)\)\s*\{/;
+  // Pattern 5: ES6 class methods or object literal methods (simplified)
+  // Covers: myMethod() {}, async myMethod() {}, get prop() {}, constructor() {}
+  const es6MethodRegex = /^\s*(static\s+)?(async\s+)?(get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(([^)]*)\)\s*(?:\{?|=>?)/;
   match = line.match(es6MethodRegex);
-   if (match) {
+  if (match) {
     const potentialName = match[4];
-    const syntaxKeywordsToExclude = ['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'new', 'delete', 'void', 'instanceof', 'with'];
-    if (!syntaxKeywordsToExclude.includes(potentialName) && !commonMethodNamesToExcludeForJsTs.includes(potentialName)) {
-      return potentialName;
-    }
-  }
-
-  const es6MethodRegexSimple = /^\s*(static\s+)?(async\s+)?(get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(([^)]*)\)/;
-   match = line.match(es6MethodRegexSimple);
-   if (match) {
-    const potentialName = match[4];
-    const syntaxKeywordsToExclude = ['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'new', 'delete', 'void', 'instanceof', 'with'];
     if (!syntaxKeywordsToExclude.includes(potentialName) && 
         !commonMethodNamesToExcludeForJsTs.includes(potentialName) &&
-        !line.includes('=>') && 
-        (line.includes('{') || line.trim().endsWith(')') || line.match(/\)\s*;/))
-    ) { 
+        (line.includes('{') || line.trim().endsWith(')') || line.match(/\)\s*;/)) // Basic check for actual definition
+    ) {
       return potentialName;
     }
   }
@@ -104,7 +97,7 @@ const extractFunctionNameFromLine = (line: string): string | null => {
 export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   const codeDisplayRef = useRef<HTMLDivElement>(null);
   const lines = code.split('\n');
-  const { focusChatInput } = useChatContext(); // Get chat context
+  const { focusChatInput } = useChatContext();
 
   const [selectedTextForDialog, setSelectedTextForDialog] = useState<string | null>(null);
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
@@ -122,7 +115,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     const text = selection?.toString().trim();
 
     if (text && text.length > 0 && selection && selection.anchorNode && codeDisplayRef.current.contains(selection.anchorNode) ) {
-      setSelectedTextForDialog(text); 
+      setSelectedTextForDialog(text);
       const range = selection.getRangeAt(0);
       setSelectionRect(range.getBoundingClientRect());
     } else {
@@ -136,29 +129,28 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [code]); 
+  }, [code]);
 
   const requestExplanationForSegment = async (segment: string, titleHint: string) => {
     if (!segment) return;
 
     setCurrentDialogTitle(titleHint ? `"${titleHint}" 설명` : "코드 설명");
-    // Always update selectedTextForDialog for the dialog preview, even if explanation is cached
-    setSelectedTextForDialog(segment); 
+    setSelectedTextForDialog(segment);
 
     if (isLoadingDialogExplanation && segment === currentSegmentForDialogExplanation) {
-      setShowExplanationDialog(true); 
+      setShowExplanationDialog(true);
       return;
     }
 
     if (!isLoadingDialogExplanation && explanationForDialog && segment === currentSegmentForDialogExplanation) {
-      setShowExplanationDialog(true); 
+      setShowExplanationDialog(true);
       return;
     }
 
     setIsLoadingDialogExplanation(true);
-    setExplanationForDialog(null); 
-    setCurrentSegmentForDialogExplanation(segment); 
-    setShowExplanationDialog(true); 
+    setExplanationForDialog(null);
+    setCurrentSegmentForDialogExplanation(segment);
+    setShowExplanationDialog(true);
 
     try {
       const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: code, codeSegment: segment });
@@ -180,22 +172,22 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       requestExplanationForSegment(selectedTextForDialog, selectedTextForDialog);
     }
   };
-  
+
   const handleAskInChatFromDialog = () => {
-    if (selectedTextForDialog) {
-      focusChatInput(`이 코드 조각에 대해 좀 더 자세히 설명해주세요:\n\`\`\`\n${selectedTextForDialog}\n\`\`\``);
-      setShowExplanationDialog(false); // Close dialog
+    if (currentSegmentForDialogExplanation) {
+      focusChatInput(`이 코드 조각에 대해 좀 더 자세히 설명해주세요:\n\`\`\`\n${currentSegmentForDialogExplanation}\n\`\`\``);
+      setShowExplanationDialog(false);
     }
   };
 
 
   const getExplainButtonStyle = (): React.CSSProperties => {
     if (!selectionRect || !codeDisplayRef.current) return { display: 'none' };
-    
+
     const codeDisplayDiv = codeDisplayRef.current;
     const containerRect = codeDisplayDiv.getBoundingClientRect();
-    const scrollArea = codeDisplayDiv.querySelector('[data-radix-scroll-area-viewport]');
-    
+    const scrollArea = codeDisplayRef.current.querySelector('[data-radix-scroll-area-viewport]');
+
     let scrollTop = 0;
     let scrollLeft = 0;
 
@@ -204,15 +196,15 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       scrollLeft = scrollArea.scrollLeft;
     }
 
-    const buttonHeight = 36; 
-    const buttonWidth = 160; 
+    const buttonHeight = 36;
+    const buttonWidth = 160;
 
-    let top = selectionRect.bottom + 5; 
-    let left = selectionRect.left + (selectionRect.width / 2) - (buttonWidth / 2); 
+    let top = selectionRect.bottom + 5;
+    let left = selectionRect.left + (selectionRect.width / 2) - (buttonWidth / 2);
 
     top = top - containerRect.top + scrollTop;
     left = left - containerRect.left + scrollLeft;
-    
+
     const maxTop = codeDisplayDiv.scrollHeight - buttonHeight - 5;
     const maxLeft = codeDisplayDiv.scrollWidth - buttonWidth - 5;
 
@@ -288,8 +280,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       <Dialog open={showExplanationDialog} onOpenChange={(isOpen) => {
           setShowExplanationDialog(isOpen);
           if (!isOpen) {
-             setSelectionRect(null); // Clear selection when dialog closes
-             // Do not clear selectedTextForDialog here, as it's needed for potential chat follow-up
+             setSelectionRect(null);
           }
         }}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
@@ -301,12 +292,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
             <DialogDescription>AI가 생성한 코드 조각에 대한 설명입니다.</DialogDescription>
           </DialogHeader>
           <div className="flex-grow overflow-y-auto pr-2 space-y-4 py-2">
-            {selectedTextForDialog && ( 
+            {currentSegmentForDialogExplanation && (
                 <div className="selected-code-preview mb-4">
                 <h4 className="text-sm font-semibold mb-1 text-muted-foreground">설명 요청한 코드:</h4>
                 <ScrollArea className="max-h-40 w-full rounded-md border bg-muted p-2">
                     <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-                    {selectedTextForDialog}
+                    {currentSegmentForDialogExplanation}
                     </pre>
                 </ScrollArea>
                 </div>

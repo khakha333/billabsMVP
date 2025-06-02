@@ -7,13 +7,13 @@ import { Header } from '@/components/layout/Header';
 import { CodeInputArea } from '@/components/CodeInputArea';
 import { AnalysisSummaryDisplay } from '@/components/AnalysisSummaryDisplay';
 import { CodeDisplay } from '@/components/CodeDisplay';
-import { CodeChatInterface } from '@/components/CodeChatInterface'; // Import chat interface
+import { CodeChatInterface } from '@/components/CodeChatInterface';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { analyzeCodeStructureAction } from '@/lib/actions';
 import type { SummarizeCodeStructureOutput } from '@/ai/flows/summarize-code-structure';
-import { ChatProvider } from '@/contexts/ChatContext'; // Import ChatProvider
+import { ChatProvider } from '@/contexts/ChatContext';
 
 export default function CodeInsightsPage() {
   const [inputCode, setInputCode] = useState<string>('');
@@ -28,22 +28,21 @@ export default function CodeInsightsPage() {
 
   const focusChatInput = (prefillText?: string) => {
     chatInterfaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    setTimeout(() => { // Ensure scroll completes before focus attempt
+    setTimeout(() => {
         chatInputRef.current?.focus();
         if (prefillText && chatInputRef.current) {
             chatInputRef.current.value = prefillText;
-            // Dispatch input event to ensure React state updates if component controls value
             const event = new Event('input', { bubbles: true });
             chatInputRef.current.dispatchEvent(event);
         }
-    }, 100); // Small delay for scroll
+    }, 100);
   };
 
 
   const handleAnalyzeCode = async (codeInput: string) => {
     setIsLoadingAnalysis(true);
     setAnalysisResult(null);
-    setInputCode(codeInput); 
+    setInputCode(codeInput);
     setDisplayedCode(codeInput);
 
     try {
@@ -80,8 +79,8 @@ export default function CodeInsightsPage() {
       return;
     }
 
-    const librariesText = analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.length > 0 
-      ? analysisResult.usedLibrariesAndAPIs.join('\n- ') 
+    const librariesText = analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.length > 0
+      ? analysisResult.usedLibrariesAndAPIs.join('\n- ')
       : '감지된 라이브러리 또는 API가 없습니다.';
 
     const content = `// 코드 인사이트 내보내기
@@ -106,7 +105,7 @@ ${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.le
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(link.href); 
+    URL.revokeObjectURL(link.href);
     toast({
       title: "내보내기 성공",
       description: "코드와 요약이 code_insights_export.txt 파일로 내보내졌습니다.",
@@ -117,46 +116,53 @@ ${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.le
     <ChatProvider focusChatInput={focusChatInput}>
       <div className="flex flex-col min-h-screen bg-background">
         <Header />
-        <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-          <div className="flex flex-col lg:flex-row gap-6 flex-grow min-h-[calc(100vh-200px)]">
-            <div className="lg:w-1/3 flex flex-col gap-6">
-              <div className="flex-grow-[2] h-1/2 lg:h-auto"> {/* CodeInput takes more space */}
-                <CodeInputArea onAnalyze={handleAnalyzeCode} isLoading={isLoadingAnalysis} />
-              </div>
-              <div className="flex-grow-[1] h-1/4 lg:h-auto">
-                <AnalysisSummaryDisplay analysisResult={analysisResult} isLoading={isLoadingAnalysis} />
-              </div>
-               {/* Chat Interface - Conditionally rendered and takes up remaining space */}
-              {inputCode && (
-                <div ref={chatInterfaceRef} className="flex-grow-[3] h-1/4 lg:h-auto min-h-[300px]">
-                  <CodeChatInterface currentCode={inputCode} chatInputRef={chatInputRef} className="min-h-[300px] lg:min-h-0" />
-                </div>
-              )}
+        <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row gap-6">
+          {/* Left Column: CodeInput, AnalysisSummary, CodeDisplay */}
+          <div className="lg:w-1/3 flex flex-col gap-6">
+            <div className="flex-grow-[2] h-1/2 lg:h-auto">
+              <CodeInputArea onAnalyze={handleAnalyzeCode} isLoading={isLoadingAnalysis} />
             </div>
-
-            <div className="lg:w-2/3 flex-grow min-h-[400px] lg:min-h-0">
-              {displayedCode ? (
+            <div className="flex-grow-[1] h-1/4 lg:h-auto">
+              <AnalysisSummaryDisplay analysisResult={analysisResult} isLoading={isLoadingAnalysis} />
+            </div>
+            {/* Interactive Code View (CodeDisplay) or its placeholder */}
+            {displayedCode ? (
+              <div className="flex-grow-[3] h-1/4 lg:h-auto min-h-[300px] lg:min-h-[400px]">
                 <CodeDisplay code={displayedCode} />
-              ) : (
-                <div className="h-full flex items-center justify-center bg-card rounded-lg shadow">
-                  <p className="text-muted-foreground text-lg italic p-8 text-center">
-                    코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
-                  </p>
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex-grow-[3] h-1/4 lg:h-auto min-h-[300px] lg:min-h-[400px] flex items-center justify-center bg-card rounded-lg shadow">
+                <p className="text-muted-foreground text-lg italic p-8 text-center">
+                  코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
+                </p>
+              </div>
+            )}
           </div>
-          
-          <div className="mt-auto pt-4 flex justify-end">
-            <Button onClick={handleExport} disabled={!inputCode && !analysisResult} variant="outline">
-              <Download className="mr-2 h-5 w-5" />
-              코드 및 요약 내보내기
-            </Button>
+
+          {/* Right Column: AI Code Chat or its placeholder */}
+          <div className="lg:w-2/3 flex-grow min-h-[400px] lg:min-h-0 flex flex-col">
+            {inputCode ? (
+              <div ref={chatInterfaceRef} className="flex-grow flex flex-col min-h-0"> {/* Ensure chatInterfaceRef is on the container that's always rendered or its placeholder */}
+                <CodeChatInterface currentCode={inputCode} chatInputRef={chatInputRef} className="flex-grow" />
+              </div>
+            ) : (
+              <div ref={chatInterfaceRef} className="flex-grow flex items-center justify-center bg-card rounded-lg shadow">
+                <p className="text-muted-foreground text-lg italic p-8 text-center">
+                  코드를 분석하면 여기에 AI 채팅 인터페이스가 표시됩니다.
+                </p>
+              </div>
+            )}
           </div>
         </main>
         <footer className="py-4 text-center text-sm text-muted-foreground border-t">
           코드 인사이트 &copy; {new Date().getFullYear()}
         </footer>
+        <div className="mt-auto pt-4 flex justify-end container mx-auto px-4 sm:px-6 lg:px-8 pb-4">
+            <Button onClick={handleExport} disabled={!inputCode && !analysisResult} variant="outline">
+              <Download className="mr-2 h-5 w-5" />
+              코드 및 요약 내보내기
+            </Button>
+          </div>
       </div>
     </ChatProvider>
   );
