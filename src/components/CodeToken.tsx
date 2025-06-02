@@ -4,9 +4,12 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button'; // For chat link
+import { MessageSquarePlus } from 'lucide-react'; // Icon for chat link
 import { Skeleton } from '@/components/ui/skeleton';
 import { explainCodeSegmentAction, explainCodeLineAction } from '@/lib/actions';
 import type { ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
+import { useChatContext } from '@/contexts/ChatContext'; // Import chat context
 
 interface CodeTokenProps {
   token: string;
@@ -18,7 +21,7 @@ const KEYWORDS = new Set([
   'default', 'try', 'catch', 'finally', 'class', 'extends', 'super', 'this', 'new', 'delete',
   'typeof', 'instanceof', 'void', 'yield', 'async', 'await', 'import', 'export', 'from', 'as',
   'get', 'set', 'static', 'public', 'private', 'protected', 'readonly', 'enum', 'interface',
-  'type', 'namespace', 'module', 'debugger', 'with', 'true', 'false', 'null', 'undefined',
+  'type', 'namespace', 'module', 'debugger', 'with', 'true', 'false', 'null', 'undefined', 'def',
 ]);
 
 const OPERATORS_PUNCTUATION = new Set([
@@ -27,19 +30,15 @@ const OPERATORS_PUNCTUATION = new Set([
   '.', ',', ';', ':', '(', ')', '{', '}', '[', ']', '?', '=>', '...',
 ]);
 
-// This function determines the general category of a token.
-// Assumes `token` is now a fully formed unit like a whole string or comment.
 const getTokenType = (token: string): string => {
   if (KEYWORDS.has(token)) {
     return 'keyword';
   }
-  // Check for full string literals first, as they are now single tokens
   if ((token.startsWith("'") && token.endsWith("'")) || 
       (token.startsWith('"') && token.endsWith('"')) || 
       (token.startsWith('`') && token.endsWith('`'))) {
     return 'string';
   }
-  // Check for full comments, as they are now single tokens
   if (token.startsWith('//') || (token.startsWith('/*') && token.endsWith('*/')) || token.startsWith('#')) {
     return 'comment';
   }
@@ -48,24 +47,14 @@ const getTokenType = (token: string): string => {
     if (['.', ',', ';', ':'].includes(token)) return 'punctuation-separator';
     return 'operator';
   }
-  if (!isNaN(parseFloat(token)) && isFinite(token as any) && !token.match(/^[a-zA-Z_]/)) { // ensure not identifier starting with number
+  if (!isNaN(parseFloat(token)) && isFinite(token as any) && !token.match(/^[a-zA-Z_]/)) {
     return 'number';
   }
   if (token.match(/^[A-Z_][A-Z0-9_]*$/) && token.length > 1) {
     return 'constant-convention'; 
   }
-  // Function name detection might need refinement if the next token isn't easily available
-  // For now, we'll classify potential function calls by identifier pattern
   if (token.match(/^[a-zA-Z_]\w*$/)) { 
-    // A more robust check would involve parsing or looking at subsequent tokens,
-    // but for basic highlighting, 'identifier' is a safe default.
-    // If we want specific function name highlighting, this might need `nextToken` or context.
-    // For simplicity, let's assume function-like identifiers could be function names.
-    // Consider a simplified heuristic or rely on the user selecting the function call for explanation.
-    // If the token is followed by '(' in the original code, it's likely a function call.
-    // This check is difficult here without more context.
-    // The AI explanation for 'identifier' should handle function calls if 'codeSegment' is the function name.
-    return 'identifier'; // This will cover variable names and most function names
+    return 'identifier';
   }
   return 'default'; 
 };
@@ -77,7 +66,7 @@ const getTokenStyle = (type: string): React.CSSProperties => {
     case 'comment': return { color: 'var(--code-comment-color)', fontStyle: 'italic' };
     case 'string': return { color: 'var(--code-string-color)' };
     case 'number': return { color: 'var(--code-number-color)' };
-    case 'function-name': return { color: 'var(--code-function-name-color)', fontWeight: '500' }; // Kept for potential future use
+    case 'function-name': return { color: 'var(--code-function-name-color)', fontWeight: '500' };
     case 'identifier': return { color: 'var(--code-variable-color)' };
     case 'operator': return { color: 'var(--code-operator-color)' };
     case 'punctuation-bracket':
@@ -89,24 +78,30 @@ const getTokenStyle = (type: string): React.CSSProperties => {
 
 const getLineContainingToken = (fullCode: string, tokenValue: string, spanElement: HTMLElement | null): string => {
   if (!spanElement) return '';
-  const lines = fullCode.split('\n');
-  // A more robust way to find the line might involve character offsets or a more complex search
-  // if the tokenValue itself can span multiple lines (e.g. multi-line comments/strings).
-  // For single-line tokens or first line of multi-line, this should be okay.
-  const ances = spanElement.parentElement;
-  if(ances) {
-    const lineNumStr = ances.dataset.lineNuber; // Assuming we add data-line-number to parent <code> or <pre>
-    if(lineNumStr) {
-      const lineNum = parseInt(lineNumStr, 10);
-      if(!isNaN(lineNum) && lineNum > 0 && lineNum <= lines.length) {
-        return lines[lineNum-1].trim();
+  
+  let currentElement: HTMLElement | null = spanElement;
+  while (currentElement && !currentElement.classList.contains('line-content')) {
+    currentElement = currentElement.parentElement;
+  }
+
+  if (currentElement && currentElement.parentElement) {
+    const linePrefixDiv = currentElement.parentElement.querySelector('.line-prefix');
+    if (linePrefixDiv && linePrefixDiv.textContent) {
+      const lineNumber = parseInt(linePrefixDiv.textContent.trim(), 10);
+      if (!isNaN(lineNumber) && lineNumber > 0) {
+        const lines = fullCode.split('\n');
+        if (lineNumber <= lines.length) {
+          return lines[lineNumber - 1]; // Return the full line content
+        }
       }
     }
   }
-
+  
+  // Fallback if direct line number extraction fails (less reliable)
+  const lines = fullCode.split('\n');
   for (const line of lines) {
-      if (line.includes(tokenValue)) { // This might be problematic if token is very common or part of a larger construct
-          return line.trim();
+      if (line.includes(tokenValue)) {
+          return line;
       }
   }
   return '';
@@ -114,13 +109,14 @@ const getLineContainingToken = (fullCode: string, tokenValue: string, spanElemen
 
 
 export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) => {
+  const { focusChatInput } = useChatContext(); // Get chat context function
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const [lineExplanation, setLineExplanation] = useState<string | null>(null);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const tokenRef = useRef<HTMLSpanElement>(null);
-  const [explainedSegment, setExplainedSegment] = useState<string | null>(null); // Store what was actually explained
+  const [explainedSegment, setExplainedSegment] = useState<string | null>(null);
 
   const tokenType = getTokenType(token);
 
@@ -128,21 +124,21 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
     token.trim().length > 0 &&
     (tokenType === 'identifier' ||
       tokenType === 'string' ||
-      tokenType === 'comment' || // Now includes '#' comments
+      tokenType === 'comment' ||
       tokenType === 'constant-convention'
     ) && !KEYWORDS.has(token);
 
 
   const handleFetchExplanation = async (segmentToExplain: string) => {
-    if (isLoading && segmentToExplain === explainedSegment) { // Already loading this exact segment
+    if (isLoading && segmentToExplain === explainedSegment) {
       return;
     }
-    if (!isLoading && segmentToExplain === explainedSegment && explanation) { // Already have explanation for this exact segment
+    if (!isLoading && segmentToExplain === explainedSegment && explanation) {
       return; 
     }
     
     setExplanation(null); 
-    setExplainedSegment(segmentToExplain); // Set what we are fetching
+    setExplainedSegment(segmentToExplain);
     setIsLoading(true);
     try {
       const result: ExplainCodeSegmentOutput = await explainCodeSegmentAction({ code: fullCodeContext, codeSegment: segmentToExplain });
@@ -163,10 +159,9 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
         return;
      }
      setLineExplanation(null);
-     setExplainedSegment(lineOfCode); // Set what we are fetching
+     setExplainedSegment(lineOfCode);
      setIsLoading(true);
      try {
-        // Ensure the input to explainCodeLineAction matches ExplainCodeLineInput (alias for ExplainCodeSegmentInput)
         const result = await explainCodeLineAction({ code: fullCodeContext, codeSegment: lineOfCode });
         setLineExplanation(result.explanation);
      } catch (error) {
@@ -178,7 +173,6 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
   };
   
   useEffect(() => {
-    // Reset explanations if token or context changes to avoid showing stale data.
     setExplanation(null);
     setLineExplanation(null);
     setExplainedSegment(null);
@@ -193,30 +187,31 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
 
     if (shiftKeyActive) {
       const line = getLineContainingToken(fullCodeContext, token, tokenRef.current);
-      if (line) {
-        // Only fetch if it's a new line or no explanation yet for this line
-        if (line !== explainedSegment || !lineExplanation) { 
-            handleFetchLineExplanation(line);
-        }
+      if (line && (line !== explainedSegment || !lineExplanation)) { 
+        handleFetchLineExplanation(line);
       }
     } else {
-      // `token` is already the full string, comment, or identifier.
-      // Only fetch if it's a new token or no explanation yet for this token.
       if (token !== explainedSegment || !explanation) { 
         handleFetchExplanation(token);
       }
     }
   };
 
+  const handleAskInChat = () => {
+    const segment = isShiftPressed ? getLineContainingToken(fullCodeContext, token, tokenRef.current) || token : token;
+    focusChatInput(`이 코드 조각에 대해 더 자세히 알려줘:\n\`\`\`\n${segment}\n\`\`\``);
+    setIsTooltipOpen(false); // Close tooltip after clicking
+  };
 
   if (token === '\n') {
     return <br />;
   }
   if (token.match(/^\s+$/) && token !== '\n') {
+    // Preserve multiple spaces by rendering them explicitly or using 'whitespace-pre'
     return <span style={{whiteSpace: 'pre'}}>{token}</span>;
   }
-  if (token.trim() === '' && token !== '\n') {
-     return <span>{token}</span>; 
+   if (token.trim() === '' && token !== '\n') { // Handle cases like single space that isn't newline
+     return <span>{token}</span>; // Or return null / <></> if it shouldn't render anything
   }
 
 
@@ -226,7 +221,7 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
       style={getTokenStyle(tokenType)}
       className={isExplainable ? "cursor-pointer hover:underline decoration-accent decoration-dotted underline-offset-2" : ""}
       onMouseEnter={isExplainable ? onMouseEnterHandler : undefined}
-      onClick={isExplainable ? (e) => onMouseEnterHandler(e) : undefined} // Also trigger on click for touch devices
+      onClick={isExplainable ? (e) => onMouseEnterHandler(e) : undefined}
     >
       {token}
     </span>
@@ -249,7 +244,6 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
     if (currentText) {
       return currentText;
     }
-    // Fallback messages if content isn't loaded yet, or if still loading a different segment
     if (isShiftPressed) {
         if (explainedSegment && explainedSegment !== getLineContainingToken(fullCodeContext, token, tokenRef.current)) {
              return `Shift + 마우스를 올려 "${token}"(이)가 포함된 라인 설명을 가져오는 중...`;
@@ -267,13 +261,13 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
       <Tooltip open={isTooltipOpen} onOpenChange={(open) => {
         setIsTooltipOpen(open);
         if (open && isExplainable) { 
-          const shiftKeyActive = (window.event as MouseEvent)?.shiftKey; // Check current shift state
-          setIsShiftPressed(!!shiftKeyActive); // Update state based on current event
+          const shiftKeyActive = (typeof window !== 'undefined' && (window.event as MouseEvent)?.shiftKey) ?? false;
+          setIsShiftPressed(shiftKeyActive);
 
           const currentSegmentToExplain = shiftKeyActive 
             ? getLineContainingToken(fullCodeContext, token, tokenRef.current) 
             : token;
-
+          
           if (currentSegmentToExplain) {
             if (shiftKeyActive) {
               if (currentSegmentToExplain !== explainedSegment || !lineExplanation) {
@@ -291,8 +285,19 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
           {content}
         </TooltipTrigger>
         {isTooltipOpen && ( 
-          <TooltipContent side="top" align="start" className="max-w-md bg-popover text-popover-foreground p-3 rounded-md border shadow-xl text-sm whitespace-pre-wrap">
-            {tooltipText()}
+          <TooltipContent side="top" align="start" className="max-w-md bg-popover text-popover-foreground p-3 rounded-md border shadow-xl text-sm ">
+            <div className="whitespace-pre-wrap">{tooltipText()}</div>
+            {(explanation || lineExplanation) && !isLoading && (
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 h-auto text-xs text-primary mt-2 flex items-center gap-1"
+                onClick={handleAskInChat}
+              >
+                <MessageSquarePlus className="h-3 w-3" />
+                채팅으로 질문하기
+              </Button>
+            )}
           </TooltipContent>
         )}
       </Tooltip>

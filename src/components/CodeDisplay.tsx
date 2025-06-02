@@ -9,9 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, Wand2, MessageSquareText } from 'lucide-react';
+import { FileText, Wand2, MessageSquareText, MessageSquarePlus } from 'lucide-react';
 import { explainCodeSegmentAction } from '@/lib/actions';
 import type { ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
+import { useChatContext } from '@/contexts/ChatContext'; // Import chat context
 
 interface CodeDisplayProps {
   code: string;
@@ -21,20 +22,19 @@ const tokenizeCode = (code: string): string[] => {
   if (!code) return [];
 
   const tokenPatterns = [
-    /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, // Comments (//, /* */, #)
-    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, // String literals
-    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined|def)\b/, // Keywords (added 'def' for Python)
-    /[a-zA-Z_]\w*/, // Identifiers
-    /\d+(?:\.\d*)?|\.\d+/, // Numbers
-    />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*\/%&|^~<>?=]/, // Operators and Punctuation (multi-char first)
-    /\s+/, // Whitespace
-    /./, // Any other character
+    /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/, 
+    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/, 
+    /\b(?:function|const|let|var|return|if|else|for|while|switch|case|default|try|catch|finally|class|extends|super|this|new|delete|typeof|instanceof|void|yield|async|await|import|export|from|as|get|set|static|public|private|protected|readonly|enum|interface|type|namespace|module|debugger|with|true|false|null|undefined|def)\b/,
+    /[a-zA-Z_]\w*/, 
+    /\d+(?:\.\d*)?|\.\d+/, 
+    />>>=|<<=|===|!==|==|!=|<=|>=|&&|\|\||\?\?|\*\*|\+\+|--|=>|[().,{}[\];:\-+*\/%&|^~<>?=]/, 
+    /\s+/, 
+    /./, 
   ];
   const combinedRegex = new RegExp(tokenPatterns.map(r => `(${r.source})`).join('|'), 'g');
 
   const tokens: string[] = [];
   let match;
-  // Using matchAll to ensure full patterns are captured as single tokens where appropriate
   for (const m of code.matchAll(combinedRegex)) {
     for (let i = 1; i < m.length; i++) {
       if (m[i] !== undefined) {
@@ -48,43 +48,31 @@ const tokenizeCode = (code: string): string[] => {
 
 const extractFunctionNameFromLine = (line: string): string | null => {
   let match;
-
-  // List of common method names that are often simple utilities or built-ins,
-  // for which a magic wand might be less useful in JS/TS method contexts.
   const commonMethodNamesToExcludeForJsTs = [
     'print', 'exit', 'log', 'warn', 'error', 'info', 'debug', 'assert',
-    'toString', 'valueOf', 'constructor', // constructor is often boilerplate
-    // Add more if needed, e.g., common lifecycle methods like 'render', 'componentDidMount'
-    // or very simple utility names if they become problematic.
+    'toString', 'valueOf', 'constructor', 
   ];
 
-  // 0. Python function: def foo(...):
   match = line.match(/^\s*def\s+([a-zA-Z_]\w*)\s*\([^)]*\)\s*:/);
-  if (match) return match[1]; // No exclusion for Python 'def' names
+  if (match) return match[1]; 
 
-  // 1. function keyword: function foo(...), async function foo(...)
   match = line.match(/^\s*(async\s+)?function\s+([a-zA-Z_$][\w$]*)\s*\(/);
-  if (match) return match[2]; // No exclusion for explicitly declared 'function'
+  if (match) return match[2]; 
 
-  // 2. Arrow functions assigned to variables: const foo = (...) =>, let bar = async () =>
   match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s*)?\(.*\)\s*=>/);
-  if (match) return match[1]; // No exclusion for assigned arrow functions
+  if (match) return match[1];
 
-  // 3. Function expressions assigned to variables: const foo = function(...), let bar = async function baz(...)
   match = line.match(/^\s*(?:const|let|var)\s+([a-zA-Z_$][\w$]*)\s*=\s*(async\s+)?function(?:\s+([a-zA-Z_$][\w$]*))?\s*\(/);
-  if (match) return match[1];  // No exclusion for assigned function expressions
+  if (match) return match[1];
 
-  // 4. Object methods (colon syntax): foo: function(...), bar: async function()
   match = line.match(/^\s*([a-zA-Z_$][\w$]*)\s*:\s*(async\s+)?function\s*\(/);
-  if (match) {
+   if (match) {
     const potentialName = match[1];
     if (!commonMethodNamesToExcludeForJsTs.includes(potentialName)) {
       return potentialName;
     }
   }
   
-  // 5. ES6 method syntax in objects/classes: myMethod(...), async myMethod(...), get myProp(){}, set myProp(val){}, *myGenerator()
-  // Also captures class constructors: constructor()
   const es6MethodRegex = /^\s*(static\s+)?(async\s+)?(get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(([^)]*)\)\s*\{/;
   match = line.match(es6MethodRegex);
    if (match) {
@@ -94,18 +82,16 @@ const extractFunctionNameFromLine = (line: string): string | null => {
       return potentialName;
     }
   }
-  // Simpler version for ES6 methods that might not end with { (e.g. interfaces, abstract methods)
-  // or if there's content between () and { like type definitions.
+
   const es6MethodRegexSimple = /^\s*(static\s+)?(async\s+)?(get\s+|set\s+|\*)?([a-zA-Z_$][\w$]*|constructor)\s*\(([^)]*)\)/;
    match = line.match(es6MethodRegexSimple);
    if (match) {
     const potentialName = match[4];
     const syntaxKeywordsToExclude = ['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'new', 'delete', 'void', 'instanceof', 'with'];
-    // Check if it's not an arrow function context and if the line seems to define a method body or is an abstract/interface-like signature
     if (!syntaxKeywordsToExclude.includes(potentialName) && 
         !commonMethodNamesToExcludeForJsTs.includes(potentialName) &&
         !line.includes('=>') && 
-        (line.includes('{') || line.trim().endsWith(')') || line.match(/\)\s*;/)) // Added check for ); for abstract/interface methods
+        (line.includes('{') || line.trim().endsWith(')') || line.match(/\)\s*;/))
     ) { 
       return potentialName;
     }
@@ -118,6 +104,7 @@ const extractFunctionNameFromLine = (line: string): string | null => {
 export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   const codeDisplayRef = useRef<HTMLDivElement>(null);
   const lines = code.split('\n');
+  const { focusChatInput } = useChatContext(); // Get chat context
 
   const [selectedTextForDialog, setSelectedTextForDialog] = useState<string | null>(null);
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
@@ -155,6 +142,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
     if (!segment) return;
 
     setCurrentDialogTitle(titleHint ? `"${titleHint}" 설명` : "코드 설명");
+    // Always update selectedTextForDialog for the dialog preview, even if explanation is cached
     setSelectedTextForDialog(segment); 
 
     if (isLoadingDialogExplanation && segment === currentSegmentForDialogExplanation) {
@@ -190,6 +178,13 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   const handleExplainSelection = () => {
     if (selectedTextForDialog) {
       requestExplanationForSegment(selectedTextForDialog, selectedTextForDialog);
+    }
+  };
+  
+  const handleAskInChatFromDialog = () => {
+    if (selectedTextForDialog) {
+      focusChatInput(`이 코드 조각에 대해 좀 더 자세히 설명해주세요:\n\`\`\`\n${selectedTextForDialog}\n\`\`\``);
+      setShowExplanationDialog(false); // Close dialog
     }
   };
 
@@ -293,7 +288,8 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
       <Dialog open={showExplanationDialog} onOpenChange={(isOpen) => {
           setShowExplanationDialog(isOpen);
           if (!isOpen) {
-             setSelectionRect(null); 
+             setSelectionRect(null); // Clear selection when dialog closes
+             // Do not clear selectedTextForDialog here, as it's needed for potential chat follow-up
           }
         }}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
@@ -328,14 +324,19 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
               </div>
             )}
           </div>
-           <DialogClose asChild>
-            <Button type="button" variant="outline" className="mt-4">
-              닫기
+          <div className="flex flex-col sm:flex-row gap-2 mt-4">
+            <Button type="button" variant="outline" onClick={handleAskInChatFromDialog} className="flex-1">
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              채팅으로 질문하기
             </Button>
-          </DialogClose>
+            <DialogClose asChild>
+                <Button type="button" variant="secondary" className="flex-1">
+                닫기
+                </Button>
+            </DialogClose>
+          </div>
         </DialogContent>
       </Dialog>
     </Card>
   );
 };
-

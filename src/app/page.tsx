@@ -1,29 +1,50 @@
+
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef, type RefObject } from 'react';
 import type React from 'react';
 import { Header } from '@/components/layout/Header';
 import { CodeInputArea } from '@/components/CodeInputArea';
 import { AnalysisSummaryDisplay } from '@/components/AnalysisSummaryDisplay';
 import { CodeDisplay } from '@/components/CodeDisplay';
+import { CodeChatInterface } from '@/components/CodeChatInterface'; // Import chat interface
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { analyzeCodeStructureAction } from '@/lib/actions';
 import type { SummarizeCodeStructureOutput } from '@/ai/flows/summarize-code-structure';
+import { ChatProvider } from '@/contexts/ChatContext'; // Import ChatProvider
 
 export default function CodeInsightsPage() {
   const [inputCode, setInputCode] = useState<string>('');
-  const [displayedCode, setDisplayedCode] = useState<string>(''); // Code to show in CodeDisplay
+  const [displayedCode, setDisplayedCode] = useState<string>('');
   const [analysisResult, setAnalysisResult] = useState<SummarizeCodeStructureOutput | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const { toast } = useToast();
 
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const chatInterfaceRef = useRef<HTMLDivElement>(null);
+
+
+  const focusChatInput = (prefillText?: string) => {
+    chatInterfaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => { // Ensure scroll completes before focus attempt
+        chatInputRef.current?.focus();
+        if (prefillText && chatInputRef.current) {
+            chatInputRef.current.value = prefillText;
+            // Dispatch input event to ensure React state updates if component controls value
+            const event = new Event('input', { bubbles: true });
+            chatInputRef.current.dispatchEvent(event);
+        }
+    }, 100); // Small delay for scroll
+  };
+
+
   const handleAnalyzeCode = async (codeInput: string) => {
     setIsLoadingAnalysis(true);
-    setAnalysisResult(null); // Clear previous result
-    setInputCode(codeInput); // Store original input for analysis & export
-    setDisplayedCode(codeInput); // Set code for display
+    setAnalysisResult(null);
+    setInputCode(codeInput); 
+    setDisplayedCode(codeInput);
 
     try {
       const result: SummarizeCodeStructureOutput = await analyzeCodeStructureAction({ code: codeInput });
@@ -85,7 +106,7 @@ ${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.le
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(link.href); // Clean up
+    URL.revokeObjectURL(link.href); 
     toast({
       title: "내보내기 성공",
       description: "코드와 요약이 code_insights_export.txt 파일로 내보내졌습니다.",
@@ -93,44 +114,50 @@ ${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.le
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <Header />
-      <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        <div className="flex flex-col lg:flex-row gap-6 flex-grow min-h-[calc(100vh-200px)]"> {/* Adjust min-h as needed */}
-          {/* Left Pane: Code Input & Summary */}
-          <div className="lg:w-1/3 flex flex-col gap-6 min-h-[300px] lg:min-h-0">
-            <div className="flex-grow h-1/2 lg:h-auto">
-              <CodeInputArea onAnalyze={handleAnalyzeCode} isLoading={isLoadingAnalysis} />
-            </div>
-            <div className="flex-grow h-1/2 lg:h-auto">
-              <AnalysisSummaryDisplay analysisResult={analysisResult} isLoading={isLoadingAnalysis} />
-            </div>
-          </div>
-
-          {/* Right Pane: Code Display */}
-          <div className="lg:w-2/3 flex-grow min-h-[400px] lg:min-h-0">
-            {displayedCode ? (
-              <CodeDisplay code={displayedCode} />
-            ) : (
-              <div className="h-full flex items-center justify-center bg-card rounded-lg shadow">
-                <p className="text-muted-foreground text-lg italic p-8 text-center">
-                  코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
-                </p>
+    <ChatProvider focusChatInput={focusChatInput}>
+      <div className="flex flex-col min-h-screen bg-background">
+        <Header />
+        <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+          <div className="flex flex-col lg:flex-row gap-6 flex-grow min-h-[calc(100vh-200px)]">
+            <div className="lg:w-1/3 flex flex-col gap-6">
+              <div className="flex-grow-[2] h-1/2 lg:h-auto"> {/* CodeInput takes more space */}
+                <CodeInputArea onAnalyze={handleAnalyzeCode} isLoading={isLoadingAnalysis} />
               </div>
-            )}
+              <div className="flex-grow-[1] h-1/4 lg:h-auto">
+                <AnalysisSummaryDisplay analysisResult={analysisResult} isLoading={isLoadingAnalysis} />
+              </div>
+               {/* Chat Interface - Conditionally rendered and takes up remaining space */}
+              {inputCode && (
+                <div ref={chatInterfaceRef} className="flex-grow-[3] h-1/4 lg:h-auto min-h-[300px]">
+                  <CodeChatInterface currentCode={inputCode} chatInputRef={chatInputRef} className="min-h-[300px] lg:min-h-0" />
+                </div>
+              )}
+            </div>
+
+            <div className="lg:w-2/3 flex-grow min-h-[400px] lg:min-h-0">
+              {displayedCode ? (
+                <CodeDisplay code={displayedCode} />
+              ) : (
+                <div className="h-full flex items-center justify-center bg-card rounded-lg shadow">
+                  <p className="text-muted-foreground text-lg italic p-8 text-center">
+                    코드를 분석하면 대화형 코드 보기가 여기에 표시됩니다.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        
-        <div className="mt-auto pt-4 flex justify-end">
-          <Button onClick={handleExport} disabled={!inputCode && !analysisResult} variant="outline">
-            <Download className="mr-2 h-5 w-5" />
-            코드 및 요약 내보내기
-          </Button>
-        </div>
-      </main>
-      <footer className="py-4 text-center text-sm text-muted-foreground border-t">
-        코드 인사이트 &copy; {new Date().getFullYear()}
-      </footer>
-    </div>
+          
+          <div className="mt-auto pt-4 flex justify-end">
+            <Button onClick={handleExport} disabled={!inputCode && !analysisResult} variant="outline">
+              <Download className="mr-2 h-5 w-5" />
+              코드 및 요약 내보내기
+            </Button>
+          </div>
+        </main>
+        <footer className="py-4 text-center text-sm text-muted-foreground border-t">
+          코드 인사이트 &copy; {new Date().getFullYear()}
+        </footer>
+      </div>
+    </ChatProvider>
   );
 }
