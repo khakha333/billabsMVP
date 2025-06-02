@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer base {
+  :root {
+    --background: 195 17% 95%; /* Light Grey #F0F4F5 */
+    --foreground: 197 15% 25%; /* Darker for contrast */
+
+    --muted: 197 15% 88%;
+    --muted-foreground: 197 15% 45%;
+
+    --popover: 195 17% 95%;
+    --popover-foreground: 197 15% 25%;
+
+    --card: 195 17% 98%; /* Slightly lighter than background or same */
+    --card-foreground: 197 15% 25%;
+
+    --border: 197 15% 85%;
+    --input: 197 15% 88%;
+
+    --primary: 197 27% 58%; /* Soft Blue #79A3B1 */
+    --primary-foreground: 197 20% 98%; /* Light for contrast on blue */
+
+    --secondary: 197 20% 80%; /* Lighter blue for secondary elements */
+    --secondary-foreground: 197 15% 25%;
+
+    --accent: 41 22% 58%; /* Muted Gold #B3A179 */
+    --accent-foreground: 41 20% 25%; /* Darker gold for text on accent */
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --ring: 197 27% 58%; /* Soft Blue for rings */
+
+    --radius: 0.5rem;
+
+    /* Code highlighting colors */
+    --code-keyword-color: hsl(var(--primary));
+    --code-comment-color: hsl(var(--muted-foreground));
+    --code-function-name-color: hsl(var(--accent));
+    --code-variable-color: hsl(var(--foreground));
+    --code-string-color: hsl(25, 70%, 55%); /* Orange-ish */
+    --code-number-color: hsl(260, 60%, 65%); /* Purple-ish */
+    --code-operator-color: hsl(var(--secondary-foreground));
+    --code-punctuation-color: hsl(var(--muted-foreground));
+    --code-default-color: hsl(var(--foreground));
+  }
+
+  .dark {
+    --background: 200 10% 10%;
+    --foreground: 200 10% 90%;
+
+    --muted: 200 10% 20%;
+    --muted-foreground: 200 10% 60%;
+
+    --popover: 200 10% 10%;
+    --popover-foreground: 200 10% 90%;
+
+    --card: 200 10% 12%;
+    --card-foreground: 200 10% 90%;
+
+    --border: 200 10% 25%;
+    --input: 200 10% 20%;
+
+    --primary: 197 27% 58%; /* Soft Blue */
+    --primary-foreground: 197 15% 15%; /* Dark for contrast on blue */
+
+    --secondary: 197 20% 30%;
+    --secondary-foreground: 200 10% 90%;
+
+    --accent: 41 22% 58%; /* Muted Gold */
+    --accent-foreground: 41 20% 90%; /* Lighter gold for text */
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --ring: 197 27% 58%;
+
+    /* Code highlighting colors for dark mode */
+    --code-keyword-color: hsl(var(--primary));
+    --code-comment-color: hsl(var(--muted-foreground));
+    --code-function-name-color: hsl(var(--accent));
+    --code-variable-color: hsl(var(--foreground));
+    --code-string-color: hsl(30, 70%, 60%);
+    --code-number-color: hsl(270, 70%, 70%);
+    --code-operator-color: hsl(var(--secondary-foreground));
+    --code-punctuation-color: hsl(var(--muted-foreground));
+    --code-default-color: hsl(var(--foreground));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
