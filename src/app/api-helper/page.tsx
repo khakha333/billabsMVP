@@ -40,6 +40,8 @@ const famousApis = [
   { name: 'Lucide Icons React', displayName: 'Lucide Icons (React)' },
   { name: 'Firebase Authentication', displayName: 'Firebase Authentication (Web)' },
   { name: 'Cloud Firestore', displayName: 'Cloud Firestore (Web SDK)' },
+  { name: 'OpenAI API', displayName: 'OpenAI API (e.g., GPT-3, GPT-4)' },
+  { name: 'Langchain', displayName: 'Langchain (LLM Framework)' },
 ];
 
 export default function ApiHelperPage() {
