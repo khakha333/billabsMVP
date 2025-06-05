@@ -11,8 +11,6 @@ import { Code2, Lightbulb, AlertTriangle } from 'lucide-react';
 import { generateApiExamplesAction } from '@/lib/actions';
 import type { GenerateApiExamplesOutput } from '@/ai/flows/generate-api-examples-flow';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-// For displaying code snippets, we might use a simplified pre/code or a lightweight syntax highlighter later.
-// For now, let's use <pre> for simplicity.
 
 interface ApiExamplesDialogProps {
   apiName: string | null;
@@ -21,47 +19,60 @@ interface ApiExamplesDialogProps {
   userCodeContext?: string;
 }
 
+interface LastFetchedProps {
+  apiName: string;
+  userCodeContext?: string;
+}
+
 export const ApiExamplesDialog: React.FC<ApiExamplesDialogProps> = ({ apiName, isOpen, onOpenChange, userCodeContext }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [examplesData, setExamplesData] = useState<GenerateApiExamplesOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastFetchedProps, setLastFetchedProps] = useState<LastFetchedProps | null>(null);
 
   useEffect(() => {
     if (isOpen && apiName) {
-      const fetchExamples = async () => {
-        setIsLoading(true);
-        setError(null);
-        setExamplesData(null);
-        try {
-          const result = await generateApiExamplesAction({ apiName, userCodeContext });
-          setExamplesData(result);
-          // Check if the result indicates an error from the action (e.g. validation failed or AI error)
-          if (result.examples.length === 0 && result.generalUsageNotes?.startsWith("오류:")) {
-            setError(result.generalUsageNotes || result.briefDescription);
+      const currentProps = { apiName, userCodeContext };
+      const hasPropsChanged =
+        !lastFetchedProps ||
+        lastFetchedProps.apiName !== currentProps.apiName ||
+        lastFetchedProps.userCodeContext !== currentProps.userCodeContext;
+
+      if (hasPropsChanged) {
+        const fetchExamples = async () => {
+          setIsLoading(true);
+          setError(null);
+          setExamplesData(null); // Clear previous data for the new fetch
+          try {
+            const result = await generateApiExamplesAction({ apiName, userCodeContext });
+            setLastFetchedProps(currentProps); // Update last fetched props regardless of result structure
+
+            if (result.examples.length === 0 && result.generalUsageNotes?.startsWith("오류:")) {
+              setError(result.generalUsageNotes || result.briefDescription);
+              setExamplesData(null); // Ensure examplesData is null if the result indicates an error
+            } else {
+              setExamplesData(result);
+            }
+          } catch (e) {
+            console.error("Failed to fetch API examples:", e);
+            const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.";
+            setError(`API 예제를 가져오는데 실패했습니다: ${errorMessage}`);
+            setExamplesData(null);
+            setLastFetchedProps(currentProps); // Store props even on catch to avoid refetch loops
+          } finally {
+            setIsLoading(false);
           }
-        } catch (e) {
-          console.error("Failed to fetch API examples:", e);
-          const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.";
-          setError(`API 예제를 가져오는데 실패했습니다: ${errorMessage}`);
-          setExamplesData({ // Provide a fallback structure on catch
-            apiName: apiName,
-            briefDescription: `오류 발생: ${errorMessage}`,
-            examples: [],
-            generalUsageNotes: "다시 시도해주세요."
-          });
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchExamples();
+        };
+        fetchExamples();
+      }
+      // If props haven't changed (hasPropsChanged is false), do nothing - existing data or error state will be shown.
     }
-  }, [isOpen, apiName, userCodeContext]);
+  }, [isOpen, apiName, userCodeContext, lastFetchedProps]);
 
   const handleClose = () => {
     onOpenChange(false);
-    // Optionally reset state if dialog is reused for different APIs quickly
-    // setExamplesData(null); 
-    // setError(null);
+    // Do not reset lastFetchedProps here, as it's part of the caching logic.
+    // examplesData and error will be reset by the useEffect if apiName/userCodeContext changes.
   };
 
   return (
