@@ -5,6 +5,7 @@ import { explainCodeSegment, type ExplainCodeSegmentInput, type ExplainCodeSegme
 import { chatWithCode, type ChatWithCodeInput, type ChatWithCodeOutput } from '@/ai/flows/chat-with-code-flow';
 // Ensure explainCodeLine and ExplainCodeLineInput/Output are correctly typed if they are aliases
 import { explainCodeSegment as explainCodeLine, type ExplainCodeSegmentInput as ExplainCodeLineInput, type ExplainCodeSegmentOutput as ExplainCodeLineOutput } from '@/ai/flows/explain-code-segment';
+import { generateApiExamples, type GenerateApiExamplesInput, type GenerateApiExamplesOutput } from '@/ai/flows/generate-api-examples-flow';
 import { z } from 'zod';
 
 const SummarizeInputSchema = z.object({
@@ -19,6 +20,11 @@ const ExplainInputSchema = z.object({
 const ChatInputSchema = z.object({
   code: z.string(),
   question: z.string(),
+});
+
+const GenerateApiExamplesInputSchemaValidation = z.object({
+  apiName: z.string(),
+  userCodeContext: z.string().optional(),
 });
 
 
@@ -72,5 +78,31 @@ export async function chatWithCodeAction(input: ChatWithCodeInput): Promise<Chat
       return { answer: `채팅 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}` };
     }
     return { answer: "죄송합니다. 질문에 대한 답변을 생성하는 중 오류가 발생했습니다." };
+  }
+}
+
+export async function generateApiExamplesAction(input: GenerateApiExamplesInput): Promise<GenerateApiExamplesOutput> {
+  try {
+    const validatedInput = GenerateApiExamplesInputSchemaValidation.parse(input);
+    return await generateApiExamples(validatedInput);
+  } catch (error) {
+    console.error("Error in generateApiExamplesAction:", error);
+    const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류";
+    if (error instanceof z.ZodError) {
+        // Fallback to a generic error response matching the schema
+        return {
+            apiName: input.apiName,
+            briefDescription: `API 예제 생성 중 입력 오류: ${error.errors.map(e => e.message).join(', ')}`,
+            examples: [],
+            generalUsageNotes: "입력값을 확인해주세요."
+        };
+    }
+    // Fallback to a generic error response matching the schema
+    return {
+        apiName: input.apiName,
+        briefDescription: `죄송합니다. API '${input.apiName}'에 대한 예제를 가져오는 중 오류가 발생했습니다.`,
+        examples: [],
+        generalUsageNotes: `오류: ${errorMessage}`
+    };
   }
 }

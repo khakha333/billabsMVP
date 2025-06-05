@@ -54,8 +54,8 @@ export default function CodeInsightsPage() {
   const handleAnalyzeCode = async (codeInput: string) => {
     setIsLoadingAnalysis(true);
     setAnalysisResult(null);
-    setInputCode(codeInput);
-    setDisplayedCode(codeInput);
+    setInputCode(codeInput); // Keep original input for context/export
+    setDisplayedCode(codeInput); // Code for display might be formatted later
 
     try {
       const result: SummarizeCodeStructureOutput = await analyzeCodeStructureAction({ code: codeInput });
@@ -137,7 +137,11 @@ ${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.le
             </div>
             {/* Analysis Summary Display */}
             <div className="h-auto">
-              <AnalysisSummaryDisplay analysisResult={analysisResult} isLoading={isLoadingAnalysis} />
+              <AnalysisSummaryDisplay 
+                analysisResult={analysisResult} 
+                isLoading={isLoadingAnalysis}
+                userCodeContext={inputCode} // Pass inputCode for context
+              />
             </div>
 
             {/* On LG screens: CodeChatInterface is here */}
