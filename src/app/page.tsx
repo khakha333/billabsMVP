@@ -204,15 +204,15 @@ ${analysisResult?.usedLibrariesAndAPIs && analysisResult.usedLibrariesAndAPIs.le
             </div>
           </div>
         </main>
-        <footer className="py-4 text-center text-sm text-muted-foreground border-t">
-          코드 인사이트 &copy; {new Date().getFullYear()}
-        </footer>
         <div className="mt-auto pt-4 flex justify-end container mx-auto px-4 sm:px-6 lg:px-8 pb-4">
             <Button onClick={handleExport} disabled={!inputCode && !analysisResult} variant="outline">
               <Download className="mr-2 h-5 w-5" />
               코드 및 요약 내보내기
             </Button>
           </div>
+        <footer className="py-4 text-center text-sm text-muted-foreground border-t">
+          코드 인사이트 &copy; {new Date().getFullYear()}
+        </footer>
       </div>
     </ChatProvider>
   );
