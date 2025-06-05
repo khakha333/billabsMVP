@@ -3,16 +3,21 @@
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Search, ListChecks, Info, Code2, Lightbulb, AlertTriangle, ExternalLink } from 'lucide-react';
-import { generateApiExamplesAction } from '@/lib/actions';
+import { ArrowLeft, Search, ListChecks, Info, Code2, Lightbulb, AlertTriangle, ExternalLink, MessageSquareQuote } from 'lucide-react';
+import { generateApiExamplesAction, chatWithApiContextAction } from '@/lib/actions';
 import type { GenerateApiExamplesOutput } from '@/ai/flows/generate-api-examples-flow';
+import { ChatInput } from '@/components/ChatInput';
+import { ChatMessageDisplay } from '@/components/ChatMessageDisplay';
+import type { Message } from '@/components/ChatMessage';
+import { useToast } from '@/hooks/use-toast';
+
 
 // Metadata can be static, so it's outside the component
 // export const metadata: Metadata = { // This needs to be handled differently for client components or moved to a layout/server component
@@ -52,6 +57,12 @@ export default function ApiHelperPage() {
   const [isLoadingApiDetails, setIsLoadingApiDetails] = useState(false);
   const [errorApiDetails, setErrorApiDetails] = useState<string | null>(null);
 
+  const [apiChatMessages, setApiChatMessages] = useState<Message[]>([]);
+  const [isApiChatLoading, setIsApiChatLoading] = useState(false);
+  const apiChatInputRef = useRef<HTMLTextAreaElement>(null);
+  const { toast } = useToast();
+
+
   useEffect(() => {
     // Set document title dynamically on the client side
     if (typeof window !== 'undefined') {
@@ -68,17 +79,12 @@ export default function ApiHelperPage() {
 
   useEffect(() => {
     if (selectedApiName) {
-      // Fetch only if:
-      // 1. No details are currently loaded (apiDetails is null)
-      // OR
-      // 2. Loaded details are for a DIFFERENT API (apiDetails.apiName !== selectedApiName)
-      // AND
-      // 3. We are not already loading details (isLoadingApiDetails is false)
       if ((!apiDetails || apiDetails.apiName !== selectedApiName) && !isLoadingApiDetails) {
         const fetchApiDetails = async () => {
           setIsLoadingApiDetails(true);
           setErrorApiDetails(null);
-          setApiDetails(null); // Clear previous details when fetching for a new or different API
+          setApiDetails(null); 
+          setApiChatMessages([]); // Clear chat when new API is selected
           try {
             const result = await generateApiExamplesAction({ apiName: selectedApiName });
             if (result.examples.length === 0 && result.generalUsageNotes?.startsWith("오류:")) {
@@ -102,18 +108,73 @@ export default function ApiHelperPage() {
         fetchApiDetails();
       }
     } else {
-      // No API is selected, clear everything
       setApiDetails(null);
       setErrorApiDetails(null);
       setIsLoadingApiDetails(false);
+      setApiChatMessages([]);
     }
   }, [selectedApiName, selectedApiDisplayName, apiDetails, isLoadingApiDetails]);
 
   const handleApiSelect = (api: { name: string; displayName: string }) => {
     setSelectedApiName(api.name);
     setSelectedApiDisplayName(api.displayName);
-    setSearchTerm(''); // Clear search term after selection
+    setSearchTerm(''); 
   };
+
+  const handleSendApiChatMessage = async (question: string) => {
+    if (!apiDetails || !selectedApiName) {
+      toast({
+        title: "오류",
+        description: "질문할 API 컨텍스트가 없습니다. 먼저 API를 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const userMessage: Message = {
+      id: Date.now().toString() + '_user_api_chat',
+      sender: 'user',
+      text: question,
+      timestamp: new Date(),
+    };
+    setApiChatMessages((prev) => [...prev, userMessage]);
+    setIsApiChatLoading(true);
+
+    const apiContextForChat = `API명: ${apiDetails.apiName}\n설명: ${apiDetails.briefDescription}\n예제 제목: ${apiDetails.examples.map(ex => ex.title).join(', ')}\n참고사항: ${apiDetails.generalUsageNotes || '없음'}`;
+
+    try {
+      const aiResponse = await chatWithApiContextAction({
+        apiName: selectedApiName,
+        apiContextDetails: apiContextForChat,
+        question,
+      });
+      const aiMessage: Message = {
+        id: Date.now().toString() + '_ai_api_chat',
+        sender: 'ai',
+        text: aiResponse.answer,
+        timestamp: new Date(),
+      };
+      setApiChatMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      console.error("API Chat error:", error);
+      const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+      const aiErrorMessage: Message = {
+        id: Date.now().toString() + '_ai_api_error',
+        sender: 'ai',
+        text: `API 채팅 오류: ${errorMessage}`,
+        timestamp: new Date(),
+      };
+      setApiChatMessages((prev) => [...prev, aiErrorMessage]);
+      toast({
+        title: "API 채팅 오류",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsApiChatLoading(false);
+    }
+  };
+
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -177,9 +238,9 @@ export default function ApiHelperPage() {
           </Card>
         </div>
 
-        {/* Right Column: API Details */}
-        <div className="lg:w-2/3 flex flex-col">
-          <Card className="flex-grow">
+        {/* Right Column: API Details and Chat */}
+        <div className="lg:w-2/3 flex flex-col gap-6">
+          <Card className="flex-grow flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Info className="h-5 w-5" />
@@ -192,8 +253,8 @@ export default function ApiHelperPage() {
                 }
               </CardDescription>
             </CardHeader>
-            <CardContent className="h-full">
-              <ScrollArea className="h-[calc(100vh-300px)] min-h-[300px] lg:h-[calc(100vh-250px)] pr-3">
+            <CardContent className="flex-grow overflow-hidden">
+              <ScrollArea className="h-[calc(50vh-180px)] min-h-[200px] lg:h-[calc(45vh-120px)] pr-3">
                 {isLoadingApiDetails && (
                   <div className="space-y-4 p-1">
                     <Skeleton className="h-6 w-3/4" />
@@ -278,6 +339,24 @@ export default function ApiHelperPage() {
               </ScrollArea>
             </CardContent>
           </Card>
+          
+          {apiDetails && !errorApiDetails && (
+            <Card className="flex-grow flex flex-col mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <MessageSquareQuote className="h-6 w-6 text-primary" />
+                  '{selectedApiDisplayName}' API에 대해 질문하기
+                </CardTitle>
+                <CardDescription>
+                  선택한 API에 대해 AI에게 더 자세한 내용을 질문하세요.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex-grow p-0 flex flex-col overflow-hidden">
+                <ChatMessageDisplay messages={apiChatMessages} isLoadingAiResponse={isApiChatLoading} />
+                <ChatInput onSendMessage={handleSendApiChatMessage} isLoading={isApiChatLoading} inputRef={apiChatInputRef} />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
       <footer className="py-4 text-center text-sm text-muted-foreground border-t">

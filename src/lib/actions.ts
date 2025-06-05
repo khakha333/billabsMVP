@@ -6,6 +6,7 @@ import { chatWithCode, type ChatWithCodeInput, type ChatWithCodeOutput } from '@
 // Ensure explainCodeLine and ExplainCodeLineInput/Output are correctly typed if they are aliases
 import { explainCodeSegment as explainCodeLine, type ExplainCodeSegmentInput as ExplainCodeLineInput, type ExplainCodeSegmentOutput as ExplainCodeLineOutput } from '@/ai/flows/explain-code-segment';
 import { generateApiExamples, type GenerateApiExamplesInput, type GenerateApiExamplesOutput } from '@/ai/flows/generate-api-examples-flow';
+import { chatWithApiContext, type ChatWithApiContextInput, type ChatWithApiContextOutput } from '@/ai/flows/chat-with-api-context-flow';
 import { z } from 'zod';
 
 const SummarizeInputSchema = z.object({
@@ -25,6 +26,12 @@ const ChatInputSchema = z.object({
 const GenerateApiExamplesInputSchemaValidation = z.object({
   apiName: z.string(),
   userCodeContext: z.string().optional(),
+});
+
+const ChatWithApiContextInputSchemaValidation = z.object({
+  apiName: z.string(),
+  apiContextDetails: z.string(),
+  question: z.string(),
 });
 
 
@@ -104,5 +111,18 @@ export async function generateApiExamplesAction(input: GenerateApiExamplesInput)
         examples: [],
         generalUsageNotes: `오류: ${errorMessage}`
     };
+  }
+}
+
+export async function chatWithApiContextAction(input: ChatWithApiContextInput): Promise<ChatWithApiContextOutput> {
+  try {
+    const validatedInput = ChatWithApiContextInputSchemaValidation.parse(input);
+    return await chatWithApiContext(validatedInput);
+  } catch (error) {
+    console.error("Error in chatWithApiContextAction:", error);
+    if (error instanceof z.ZodError) {
+      return { answer: `API 컨텍스트 채팅 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}` };
+    }
+    return { answer: "죄송합니다. API 관련 질문에 대한 답변을 생성하는 중 오류가 발생했습니다." };
   }
 }
