@@ -66,31 +66,46 @@ export default function ApiHelperPage() {
 
   useEffect(() => {
     if (selectedApiName) {
-      const fetchApiDetails = async () => {
-        setIsLoadingApiDetails(true);
-        setErrorApiDetails(null);
-        setApiDetails(null);
-        try {
-          const result = await generateApiExamplesAction({ apiName: selectedApiName });
-          if (result.examples.length === 0 && result.generalUsageNotes?.startsWith("오류:")) {
-             setErrorApiDetails(result.generalUsageNotes || result.briefDescription);
-          } else if (result.briefDescription.toLowerCase().includes("찾을 수 없") || result.briefDescription.toLowerCase().includes("unknown api")) {
-             setErrorApiDetails(`죄송합니다. '${selectedApiDisplayName || selectedApiName}'에 대한 정보를 찾을 수 없습니다. 다른 키워드로 시도해 보세요.`);
+      // Fetch only if:
+      // 1. No details are currently loaded (apiDetails is null)
+      // OR
+      // 2. Loaded details are for a DIFFERENT API (apiDetails.apiName !== selectedApiName)
+      // AND
+      // 3. We are not already loading details (isLoadingApiDetails is false)
+      if ((!apiDetails || apiDetails.apiName !== selectedApiName) && !isLoadingApiDetails) {
+        const fetchApiDetails = async () => {
+          setIsLoadingApiDetails(true);
+          setErrorApiDetails(null);
+          setApiDetails(null); // Clear previous details when fetching for a new or different API
+          try {
+            const result = await generateApiExamplesAction({ apiName: selectedApiName });
+            if (result.examples.length === 0 && result.generalUsageNotes?.startsWith("오류:")) {
+               setErrorApiDetails(result.generalUsageNotes || result.briefDescription);
+               setApiDetails(null);
+            } else if (result.briefDescription.toLowerCase().includes("찾을 수 없") || result.briefDescription.toLowerCase().includes("unknown api")) {
+               setErrorApiDetails(`죄송합니다. '${selectedApiDisplayName || selectedApiName}'에 대한 정보를 찾을 수 없습니다. 다른 키워드로 시도해 보세요.`);
+               setApiDetails(null);
+            } else {
+              setApiDetails(result);
+            }
+          } catch (e) {
+            console.error("Failed to fetch API examples:", e);
+            const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.";
+            setErrorApiDetails(`API 예제를 가져오는데 실패했습니다: ${errorMessage}`);
+            setApiDetails(null);
+          } finally {
+            setIsLoadingApiDetails(false);
           }
-          else {
-            setApiDetails(result);
-          }
-        } catch (e) {
-          console.error("Failed to fetch API examples:", e);
-          const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.";
-          setErrorApiDetails(`API 예제를 가져오는데 실패했습니다: ${errorMessage}`);
-        } finally {
-          setIsLoadingApiDetails(false);
-        }
-      };
-      fetchApiDetails();
+        };
+        fetchApiDetails();
+      }
+    } else {
+      // No API is selected, clear everything
+      setApiDetails(null);
+      setErrorApiDetails(null);
+      setIsLoadingApiDetails(false);
     }
-  }, [selectedApiName, selectedApiDisplayName]);
+  }, [selectedApiName, selectedApiDisplayName, apiDetails, isLoadingApiDetails]);
 
   const handleApiSelect = (api: { name: string; displayName: string }) => {
     setSelectedApiName(api.name);
