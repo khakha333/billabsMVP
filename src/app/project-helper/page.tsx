@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, FolderKanban, Wand2, MessagesSquare } from 'lucide-react';
+import { ArrowLeft, FolderKanban, Wand2, MessagesSquare, FileUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 // Client-side dynamic title setting
@@ -22,12 +22,52 @@ export default function ProjectHelperPage() {
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       document.title = '프로젝트 도우미 - 코드 인사이트';
     }
   }, []);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result;
+        if (typeof text === 'string') {
+          setProjectInput(text);
+          toast({
+            title: "파일 로드 성공",
+            description: `"${file.name}" 파일의 내용이 성공적으로 로드되었습니다.`,
+          });
+        } else {
+          toast({
+            title: "파일 로드 실패",
+            description: "파일 내용을 읽는 중 오류가 발생했습니다.",
+            variant: "destructive",
+          });
+        }
+      };
+      reader.onerror = () => {
+        toast({
+          title: "파일 로드 오류",
+          description: "파일을 읽는 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      };
+      reader.readAsText(file);
+    }
+    // Reset file input to allow selecting the same file again
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+    }
+  };
+
+  const handleUploadButtonClick = () => {
+    fileInputRef.current?.click();
+  };
 
   const handleAnalyzeProject = async () => {
     if (!projectInput.trim()) {
@@ -79,24 +119,35 @@ export default function ProjectHelperPage() {
                 프로젝트 정보 입력
               </CardTitle>
               <CardDescription>
-                프로젝트 구조(예: `tree` 명령어 결과), 주요 파일 내용, 또는 `package.json` 등을 붙여넣어 주세요.
+                프로젝트 구조(예: `tree` 명령어 결과), 주요 파일 내용(`package.json` 등), 또는 단일 중요 파일의 내용을 붙여넣거나 아래 버튼으로 업로드하세요.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col">
               <Textarea
                 value={projectInput}
                 onChange={(e) => setProjectInput(e.target.value)}
-                placeholder="여기에 프로젝트 관련 정보를 붙여넣으세요..."
+                placeholder="여기에 프로젝트 관련 정보를 붙여넣거나 파일을 업로드하세요..."
                 className="h-full w-full resize-none font-mono text-sm p-3 rounded-md shadow-inner flex-grow min-h-[200px]"
                 aria-label="Project input area"
                 disabled={isLoadingAnalysis}
               />
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.swift,.kt,.kts,.html,.css,.json,.md,.txt,.*" 
+                className="hidden"
+              />
+              <Button onClick={handleUploadButtonClick} variant="outline" className="w-full sm:w-auto" disabled={isLoadingAnalysis}>
+                <FileUp className="mr-2 h-5 w-5" />
+                파일 내용 불러오기
+              </Button>
               <Button 
                 onClick={handleAnalyzeProject} 
                 disabled={isLoadingAnalysis || !projectInput.trim()} 
-                className="w-full"
+                className="w-full sm:w-auto flex-grow"
               >
                 <Wand2 className="mr-2 h-5 w-5" />
                 {isLoadingAnalysis ? '분석 중...' : '프로젝트 분석 요청'}
@@ -146,3 +197,5 @@ export default function ProjectHelperPage() {
     </div>
   );
 }
+
+    
