@@ -1,4 +1,4 @@
-import { Code2, Library } from 'lucide-react';
+import { Code2, Library, FolderKanban } from 'lucide-react';
 import type React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -13,12 +13,20 @@ export const Header: React.FC = () => {
             코드 인사이트
           </h1>
         </div>
-        <Link href="/api-helper" passHref>
-          <Button variant="outline">
-            <Library className="mr-2 h-5 w-5" />
-            API 도우미
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/project-helper" passHref>
+            <Button variant="outline">
+              <FolderKanban className="mr-2 h-5 w-5" />
+              프로젝트 도우미
+            </Button>
+          </Link>
+          <Link href="/api-helper" passHref>
+            <Button variant="outline">
+              <Library className="mr-2 h-5 w-5" />
+              API 도우미
+            </Button>
+          </Link>
+        </div>
       </div>
     </header>
   );
