@@ -119,7 +119,7 @@ export const CodeChatInterface: React.FC<CodeChatInterfaceProps> = ({ currentCod
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
-    } catch (error)_ {
+    } catch (error) {
       console.error("Chat error:", error);
       const errorMessageText = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
       const aiErrorMessage: Message = {
