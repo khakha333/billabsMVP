@@ -21,6 +21,7 @@ const ExplainInputSchema = z.object({
 const ChatInputSchema = z.object({
   code: z.string(),
   question: z.string(),
+  additionalContext: z.string().optional(),
 });
 
 const GenerateApiExamplesInputSchemaValidation = z.object({
@@ -124,5 +125,38 @@ export async function chatWithApiContextAction(input: ChatWithApiContextInput): 
       return { answer: `API 컨텍스트 채팅 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}` };
     }
     return { answer: "죄송합니다. API 관련 질문에 대한 답변을 생성하는 중 오류가 발생했습니다." };
+  }
+}
+
+export async function fetchCodeFromGithubAction(url: string): Promise<{ code?: string; error?: string }> {
+  const GithubUrlSchema = z.string().url().startsWith('https://github.com/');
+  try {
+    GithubUrlSchema.parse(url);
+  } catch (error) {
+    return { error: '유효한 GitHub 파일 URL이 아닙니다. URL은 https://github.com/ 으로 시작해야 합니다.' };
+  }
+
+  // Convert to raw URL
+  const rawUrl = url
+    .replace('github.com', 'raw.githubusercontent.com')
+    .replace('/blob/', '/');
+  
+  if (rawUrl === url) {
+    return { error: 'GitHub 파일 URL을 입력해주세요 (예: .../blob/main/...). 레포지토리 URL은 지원되지 않습니다.' };
+  }
+
+  try {
+    const response = await fetch(rawUrl);
+    if (!response.ok) {
+      throw new Error(`GitHub에서 파일을 가져오는데 실패했습니다 (상태 코드: ${response.status}). URL을 확인해주세요.`);
+    }
+    const code = await response.text();
+    return { code };
+  } catch (error) {
+    console.error("Error fetching from GitHub:", error);
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
+    return { error: '알 수 없는 오류로 인해 GitHub에서 파일을 가져올 수 없습니다.' };
   }
 }
