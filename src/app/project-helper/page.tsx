@@ -137,7 +137,7 @@ export default function ProjectHelperPage() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
-                accept=".js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.swift,.kt,.kts,.html,.css,.json,.md,.txt,.*" 
+                accept=".js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.swift,.kt,.kts,.html,.css,.json,.md,.txt" 
                 className="hidden"
               />
               <Button onClick={handleUploadButtonClick} variant="outline" className="w-full sm:w-auto" disabled={isLoadingAnalysis}>

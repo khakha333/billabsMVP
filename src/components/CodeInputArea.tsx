@@ -155,7 +155,7 @@ export const CodeInputArea: React.FC<CodeInputAreaProps> = ({ onAnalyze, isLoadi
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept=".js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.swift,.kt,.kts,.html,.css,.json,.md,.txt,.*,.zip"
+          accept=".js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.swift,.kt,.kts,.html,.css,.json,.md,.txt,.zip"
           className="hidden"
         />
         <Button onClick={handleUploadButtonClick} variant="outline" className="w-full sm:w-auto" disabled={isLoading || isFetching}>
