@@ -7,6 +7,7 @@ import { chatWithCode, type ChatWithCodeInput, type ChatWithCodeOutput } from '@
 import { explainCodeSegment as explainCodeLine, type ExplainCodeSegmentInput as ExplainCodeLineInput, type ExplainCodeSegmentOutput as ExplainCodeLineOutput } from '@/ai/flows/explain-code-segment';
 import { generateApiExamples, type GenerateApiExamplesInput, type GenerateApiExamplesOutput } from '@/ai/flows/generate-api-examples-flow';
 import { chatWithApiContext, type ChatWithApiContextInput, type ChatWithApiContextOutput } from '@/ai/flows/chat-with-api-context-flow';
+import { analyzeGithubRepository, type AnalyzeGithubRepositoryInput, type AnalyzeGithubRepositoryOutput } from '@/ai/flows/analyze-github-repo-flow';
 import { z } from 'zod';
 
 const SummarizeInputSchema = z.object({
@@ -128,35 +129,27 @@ export async function chatWithApiContextAction(input: ChatWithApiContextInput): 
   }
 }
 
-export async function fetchCodeFromGithubAction(url: string): Promise<{ code?: string; error?: string }> {
-  const GithubUrlSchema = z.string().url().startsWith('https://github.com/');
-  try {
-    GithubUrlSchema.parse(url);
-  } catch (error) {
-    return { error: '유효한 GitHub 파일 URL이 아닙니다. URL은 https://github.com/ 으로 시작해야 합니다.' };
-  }
-
-  // Convert to raw URL
-  const rawUrl = url
-    .replace('github.com', 'raw.githubusercontent.com')
-    .replace('/blob/', '/');
-  
-  if (rawUrl === url) {
-    return { error: 'GitHub 파일 URL을 입력해주세요 (예: .../blob/main/...). 레포지토리 URL은 지원되지 않습니다.' };
-  }
+export async function analyzeGithubRepositoryAction(input: AnalyzeGithubRepositoryInput): Promise<AnalyzeGithubRepositoryOutput> {
+  const RepoUrlSchema = z.object({
+    repositoryUrl: z.string().url().startsWith('https://github.com/'),
+  });
 
   try {
-    const response = await fetch(rawUrl);
-    if (!response.ok) {
-      throw new Error(`GitHub에서 파일을 가져오는데 실패했습니다 (상태 코드: ${response.status}). URL을 확인해주세요.`);
+    const validatedInput = RepoUrlSchema.parse(input);
+    const url = new URL(validatedInput.repositoryUrl);
+    const pathParts = url.pathname.split('/').filter(p => p && p !== 'blob' && p !== 'tree');
+    if (pathParts.length < 2) {
+      return { combinedCode: '', fileCount: 0, error: '유효한 GitHub 저장소 URL이 아닙니다 (예: https://github.com/owner/repo).' };
     }
-    const code = await response.text();
-    return { code };
+    const cleanUrl = `${url.protocol}//${url.hostname}/${pathParts[0]}/${pathParts[1]}`;
+    
+    return await analyzeGithubRepository({ repositoryUrl: cleanUrl });
   } catch (error) {
-    console.error("Error fetching from GitHub:", error);
-    if (error instanceof Error) {
-      return { error: error.message };
+    console.error("Error in analyzeGithubRepositoryAction:", error);
+    const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+    if (error instanceof z.ZodError) {
+      return { combinedCode: '', fileCount: 0, error: `GitHub 저장소 URL이 유효하지 않습니다: ${error.errors.map(e => e.message).join(', ')}` };
     }
-    return { error: '알 수 없는 오류로 인해 GitHub에서 파일을 가져올 수 없습니다.' };
+    return { combinedCode: '', fileCount: 0, error: errorMessage };
   }
 }

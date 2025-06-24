@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Wand2, UploadCloud, FileUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
-import { fetchCodeFromGithubAction } from '@/lib/actions';
+import { analyzeGithubRepositoryAction } from '@/lib/actions';
 
 interface CodeInputAreaProps {
   onAnalyze: (code: string) => void;
@@ -35,12 +35,14 @@ export const CodeInputArea: React.FC<CodeInputAreaProps> = ({ onAnalyze, isLoadi
     if (!githubUrl.trim()) return;
     setIsFetching(true);
     try {
-      const result = await fetchCodeFromGithubAction(githubUrl);
+      const result = await analyzeGithubRepositoryAction({ repositoryUrl: githubUrl });
       if (result.error) {
         toast({ title: "가져오기 실패", description: result.error, variant: "destructive" });
-      } else if (result.code) {
-        setInputValue(result.code);
-        toast({ title: "가져오기 성공", description: "GitHub에서 코드를 성공적으로 불러왔습니다." });
+      } else if (result.combinedCode) {
+        setInputValue(result.combinedCode);
+        toast({ title: "가져오기 성공", description: `GitHub 저장소에서 ${result.fileCount}개 파일을 성공적으로 불러왔습니다.` });
+      } else {
+        toast({ title: "정보 없음", description: "저장소에서 분석할 수 있는 텍스트 파일을 찾지 못했습니다.", variant: "destructive" });
       }
     } catch (error) {
       toast({ title: "오류", description: "코드를 가져오는 중 예상치 못한 오류가 발생했습니다.", variant: "destructive" });
@@ -121,7 +123,7 @@ export const CodeInputArea: React.FC<CodeInputAreaProps> = ({ onAnalyze, isLoadi
           코드 입력
         </CardTitle>
         <CardDescription>
-          AI 기반 분석 및 설명을 받으려면 아래에 코드 스니펫을 붙여넣거나, 파일을 업로드하거나, GitHub 파일 링크를 이용하세요.
+          AI 기반 분석 및 설명을 받으려면 아래에 코드 스니펫을 붙여넣거나, 파일을 업로드하거나, GitHub 저장소 링크를 이용하세요.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow flex flex-col gap-4">
@@ -134,18 +136,18 @@ export const CodeInputArea: React.FC<CodeInputAreaProps> = ({ onAnalyze, isLoadi
           disabled={isLoading || isFetching}
         />
         <div className="space-y-2">
-          <Label htmlFor="github-url">또는 GitHub 파일 URL에서 가져오기</Label>
+          <Label htmlFor="github-url">또는 GitHub 저장소 URL에서 가져오기</Label>
           <div className="flex items-center gap-2">
             <Input
               id="github-url"
               value={githubUrl}
               onChange={(e) => setGithubUrl(e.target.value)}
-              placeholder="https://github.com/..."
+              placeholder="https://github.com/owner/repo"
               className="h-10"
               disabled={isLoading || isFetching}
             />
             <Button onClick={handleFetchFromUrl} disabled={isLoading || isFetching || !githubUrl.trim()} className="shrink-0">
-              {isFetching ? '가져오는 중...' : '코드 가져오기'}
+              {isFetching ? '가져오는 중...' : '저장소 분석'}
             </Button>
           </div>
         </div>
