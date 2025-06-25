@@ -1,6 +1,4 @@
 
-import path from 'path-browserify';
-
 export interface GraphNode {
   id: string; // file path
 }
@@ -17,6 +15,28 @@ export interface DependencyGraphData {
 
 // Basic regex to find static imports. This won't catch dynamic imports.
 const IMPORT_REGEX = /import(?:[\s\S]*?)from\s*['"]((@\/|(?:\.\/|\.\.\/))[^'"]+)['"]/g;
+
+/**
+ * Resolves a relative path from a base path, handling `.` and `..`.
+ * @param basePath The path of the file containing the import.
+ * @param relativePath The path from the import statement.
+ * @returns The resolved absolute path from the project root.
+ */
+function resolveImportPath(basePath: string, relativePath: string): string {
+    const baseSegments = basePath.split('/').slice(0, -1); // equivalent to dirname
+    const relativeSegments = relativePath.split('/');
+    const resolvedSegments = [...baseSegments];
+
+    for (const segment of relativeSegments) {
+        if (segment === '..') {
+            resolvedSegments.pop();
+        } else if (segment !== '.' && segment !== '') {
+            resolvedSegments.push(segment);
+        }
+    }
+    return resolvedSegments.join('/');
+}
+
 
 export function parseDependencies(fileMap: Map<string, string>): DependencyGraphData {
   const nodes: GraphNode[] = Array.from(fileMap.keys()).map(p => ({ id: p }));
@@ -35,11 +55,7 @@ export function parseDependencies(fileMap: Map<string, string>): DependencyGraph
         targetPath = importPath.replace('@/', 'src/');
       } else {
         // Resolve relative path
-        const currentDir = path.dirname(filePath);
-        // Using resolve and then cleaning it up.
-        // path.resolve('/foo/bar', './baz'); // returns '/foo/bar/baz'
-        // path.resolve('/foo/bar', '../baz'); // returns '/foo/baz'
-        targetPath = path.join(currentDir, importPath);
+        targetPath = resolveImportPath(filePath, importPath);
       }
       
       // Check for extensions .ts, .tsx, .js, .jsx or index files
