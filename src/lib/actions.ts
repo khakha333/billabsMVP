@@ -8,36 +8,15 @@ import { explainCodeSegment as explainCodeLine, type ExplainCodeSegmentInput as 
 import { generateApiExamples, type GenerateApiExamplesInput, type GenerateApiExamplesOutput } from '@/ai/flows/generate-api-examples-flow';
 import { chatWithApiContext, type ChatWithApiContextInput, type ChatWithApiContextOutput } from '@/ai/flows/chat-with-api-context-flow';
 import { analyzeGithubRepository, type AnalyzeGithubRepositoryInput, type AnalyzeGithubRepositoryOutput } from '@/ai/flows/analyze-github-repo-flow';
+import { analyzeDependencies, type AnalyzeDependenciesInput, type AnalyzeDependenciesOutput } from '@/ai/flows/analyze-dependencies-flow';
+
 import { z } from 'zod';
-
-const SummarizeInputSchema = z.object({
-  code: z.string(),
-});
-
-const ExplainInputSchema = z.object({
-  code: z.string(),
-  codeSegment: z.string(),
-});
-
-const ChatInputSchema = z.object({
-  code: z.string(),
-  question: z.string(),
-  additionalContext: z.string().optional(),
-});
-
-const GenerateApiExamplesInputSchemaValidation = z.object({
-  apiName: z.string(),
-  userCodeContext: z.string().optional(),
-});
-
-const ChatWithApiContextInputSchemaValidation = z.object({
-  apiName: z.string(),
-  apiContextDetails: z.string(),
-  question: z.string(),
-});
 
 
 export async function analyzeCodeStructureAction(input: SummarizeCodeStructureInput): Promise<SummarizeCodeStructureOutput> {
+  const SummarizeInputSchema = z.object({
+    code: z.string(),
+  });
   try {
     const validatedInput = SummarizeInputSchema.parse(input);
     return await summarizeCodeStructure(validatedInput);
@@ -51,6 +30,10 @@ export async function analyzeCodeStructureAction(input: SummarizeCodeStructureIn
 }
 
 export async function explainCodeSegmentAction(input: ExplainCodeSegmentInput): Promise<ExplainCodeSegmentOutput> {
+  const ExplainInputSchema = z.object({
+    code: z.string(),
+    codeSegment: z.string(),
+  });
   try {
     const validatedInput = ExplainInputSchema.parse(input);
     return await explainCodeSegment(validatedInput);
@@ -65,6 +48,10 @@ export async function explainCodeSegmentAction(input: ExplainCodeSegmentInput): 
 }
 
 export async function explainCodeLineAction(input: ExplainCodeLineInput): Promise<ExplainCodeLineOutput> {
+  const ExplainInputSchema = z.object({
+    code: z.string(),
+    codeSegment: z.string(),
+  });
   try {
     const validatedInput = ExplainInputSchema.parse(input);
     return await explainCodeLine(validatedInput);
@@ -78,6 +65,11 @@ export async function explainCodeLineAction(input: ExplainCodeLineInput): Promis
 }
 
 export async function chatWithCodeAction(input: ChatWithCodeInput): Promise<ChatWithCodeOutput> {
+  const ChatInputSchema = z.object({
+    code: z.string(),
+    question: z.string(),
+    additionalContext: z.string().optional(),
+  });
   try {
     const validatedInput = ChatInputSchema.parse(input);
     return await chatWithCode(validatedInput);
@@ -91,6 +83,10 @@ export async function chatWithCodeAction(input: ChatWithCodeInput): Promise<Chat
 }
 
 export async function generateApiExamplesAction(input: GenerateApiExamplesInput): Promise<GenerateApiExamplesOutput> {
+  const GenerateApiExamplesInputSchemaValidation = z.object({
+    apiName: z.string(),
+    userCodeContext: z.string().optional(),
+  });
   try {
     const validatedInput = GenerateApiExamplesInputSchemaValidation.parse(input);
     return await generateApiExamples(validatedInput);
@@ -117,6 +113,11 @@ export async function generateApiExamplesAction(input: GenerateApiExamplesInput)
 }
 
 export async function chatWithApiContextAction(input: ChatWithApiContextInput): Promise<ChatWithApiContextOutput> {
+  const ChatWithApiContextInputSchemaValidation = z.object({
+    apiName: z.string(),
+    apiContextDetails: z.string(),
+    question: z.string(),
+  });
   try {
     const validatedInput = ChatWithApiContextInputSchemaValidation.parse(input);
     return await chatWithApiContext(validatedInput);
@@ -152,4 +153,20 @@ export async function analyzeGithubRepositoryAction(input: AnalyzeGithubReposito
     }
     return { combinedCode: '', fileCount: 0, error: errorMessage };
   }
+}
+
+export async function analyzeDependenciesAction(input: AnalyzeDependenciesInput): Promise<AnalyzeDependenciesOutput> {
+    const AnalyzeDependenciesInputSchema = z.object({
+      packageJsonContent: z.string(),
+    });
+    try {
+        const validatedInput = AnalyzeDependenciesInputSchema.parse(input);
+        return await analyzeDependencies(validatedInput);
+    } catch (error) {
+        console.error("Error in analyzeDependenciesAction:", error);
+        if (error instanceof z.ZodError) {
+            throw new Error(`의존성 분석 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}`);
+        }
+        throw new Error("의존성 분석 중 내부 오류가 발생했습니다.");
+    }
 }

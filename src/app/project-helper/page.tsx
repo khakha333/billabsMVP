@@ -7,13 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, AlertTriangle } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Skeleton } from '@/components/ui/skeleton';
+import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
-import { analyzeGithubRepositoryAction } from '@/lib/actions';
+import { analyzeGithubRepositoryAction, analyzeDependenciesAction } from '@/lib/actions';
+import type { AnalyzeDependenciesOutput } from '@/ai/flows/analyze-dependencies-flow';
 import { FileTreeDisplay } from '@/components/FileTreeDisplay';
 import { CodeDisplay } from '@/components/CodeDisplay';
 import { ChatProvider } from '@/contexts/ChatContext';
+import { ProjectVisualization } from '@/components/ProjectVisualization';
+
 
 interface TreeNode {
   [key: string]: TreeNode | null;
@@ -25,6 +30,9 @@ export default function ProjectHelperPage() {
   const [fileMap, setFileMap] = useState<Map<string, string> | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [dependencyAnalysis, setDependencyAnalysis] = useState<AnalyzeDependenciesOutput['dependencies'] | null>(null);
+  const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
+  
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,11 +79,47 @@ export default function ProjectHelperPage() {
       const parsedMap = parseProjectInput(content);
       setFileMap(parsedMap);
       setSelectedFile(null);
+      setDependencyAnalysis(null);
       toast({
           title: "로드 성공",
           description: `${source}에서 코드를 불러왔습니다. 파일 구조가 오른쪽에 표시됩니다.`,
       });
+
+      const packageJsonContent = parsedMap.get('package.json');
+      if (packageJsonContent) {
+          runDependencyAnalysis(packageJsonContent);
+      }
   };
+
+  const runDependencyAnalysis = async (packageJsonContent: string) => {
+    setIsAnalyzingDependencies(true);
+    try {
+        const result = await analyzeDependenciesAction({ packageJsonContent });
+        setDependencyAnalysis(result.dependencies);
+    } catch (error) {
+        console.error("Dependency analysis error:", error);
+        toast({
+            title: "의존성 분석 실패",
+            description: "의존성 정보를 분석하는 중 오류가 발생했습니다.",
+            variant: "destructive",
+        });
+        setDependencyAnalysis(null);
+    } finally {
+        setIsAnalyzingDependencies(false);
+    }
+  };
+
+  const groupedDependencies = useMemo(() => {
+    if (!dependencyAnalysis) return {};
+    return dependencyAnalysis.reduce((acc, dep) => {
+      const category = dep.category || 'Other';
+      if (!acc[category]) {
+        acc[category] = [];
+      }
+      acc[category].push(dep);
+      return acc;
+    }, {} as Record<string, typeof dependencyAnalysis>);
+  }, [dependencyAnalysis]);
 
   const handleFetchFromRepo = async () => {
     if (!githubUrl.trim()) return;
@@ -83,6 +127,7 @@ export default function ProjectHelperPage() {
     setFileMap(null);
     setProjectInput('');
     setSelectedFile(null);
+    setDependencyAnalysis(null);
     try {
       const result = await analyzeGithubRepositoryAction({ repositoryUrl: githubUrl });
       if (result.error) {
@@ -109,6 +154,7 @@ export default function ProjectHelperPage() {
     setFileMap(null);
     setProjectInput('');
     setSelectedFile(null);
+    setDependencyAnalysis(null);
 
     if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
       const reader = new FileReader();
@@ -126,7 +172,8 @@ export default function ProjectHelperPage() {
             zip.forEach((relativePath, zipEntry) => {
                 const isTextFile = !zipEntry.dir && (
                     textFileNames.some(name => zipEntry.name.toLowerCase().endsWith(name.toLowerCase())) ||
-                    textFileExtensions.some(ext => zipEntry.name.endsWith(ext))
+                    textFileExtensions.some(ext => zipEntry.name.endsWith(ext)) ||
+                    zipEntry.name.toLowerCase().endsWith('package.json')
                 );
               if (isTextFile) {
                   const filePromise = zipEntry.async('string').then(fileContent => {
@@ -227,9 +274,9 @@ export default function ProjectHelperPage() {
         </header>
 
         <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row gap-6">
-          {/* Left Column: Project Input */}
+          {/* Left Column: Project Input & Overview */}
           <div className="lg:w-1/3 flex flex-col gap-6">
-            <Card className="flex flex-col flex-grow">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <Wand2 className="h-5 w-5" />
@@ -281,20 +328,67 @@ export default function ProjectHelperPage() {
                       </Button>
                   </div>
               </CardContent>
-              <CardFooter>
-                <Button 
-                  onClick={handleAnalyzeProject} 
-                  disabled={isLoading || !projectInput.trim()} 
-                  className="w-full"
-                >
-                  <Wand2 className="mr-2 h-5 w-5" />
-                  {isLoading ? '분석 중...' : 'AI 에이전트와 대화 시작'}
-                </Button>
-              </CardFooter>
             </Card>
+
+            {fileMap && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-xl">
+                            <Wand2 className="h-5 w-5" />
+                            프로젝트 개요
+                        </CardTitle>
+                        <CardDescription>
+                            AI가 분석한 프로젝트 의존성 및 코드 구조입니다.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div>
+                            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                                <Package className="h-5 w-5 text-primary" />
+                                의존성 분석
+                            </h3>
+                            {isAnalyzingDependencies ? (
+                                <div className="space-y-2">
+                                    <Skeleton className="h-8 w-full" />
+                                    <Skeleton className="h-8 w-full" />
+                                    <Skeleton className="h-8 w-full" />
+                                </div>
+                            ) : dependencyAnalysis && Object.keys(groupedDependencies).length > 0 ? (
+                                <Accordion type="single" collapsible className="w-full">
+                                    {Object.entries(groupedDependencies).map(([category, deps]) => (
+                                        <AccordionItem value={category} key={category}>
+                                            <AccordionTrigger>{category} ({deps.length})</AccordionTrigger>
+                                            <AccordionContent>
+                                                <ul className="space-y-2 text-sm">
+                                                    {deps.map(dep => (
+                                                        <li key={dep.name}>
+                                                            <strong className="font-medium">{dep.name}</strong>: {dep.description}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </AccordionContent>
+                                        </AccordionItem>
+                                    ))}
+                                </Accordion>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">분석할 의존성이 없거나, package.json 파일을 찾을 수 없습니다.</p>
+                            )}
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                                <BarChart3 className="h-5 w-5 text-primary" />
+                                코드 언어 분포
+                            </h3>
+                            <div className="h-60 w-full">
+                                <ProjectVisualization fileMap={fileMap} />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
           </div>
 
-          {/* Right Column: Analysis and Agent Interaction */}
+          {/* Right Column: File Tree and Code Viewer */}
           <div className="lg:w-2/3 flex flex-col gap-6">
             <Card className="flex-grow flex flex-col">
               <CardHeader>
@@ -303,7 +397,7 @@ export default function ProjectHelperPage() {
                   프로젝트 구조
                 </CardTitle>
                 <CardDescription>
-                  로드된 프로젝트의 파일 구조입니다. 파일을 클릭하여 내용을 확인하고 분석을 시작하세요.
+                  로드된 프로젝트의 파일 구조입니다. 파일을 클릭하여 내용을 확인하세요.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow">
