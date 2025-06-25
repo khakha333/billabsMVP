@@ -1,26 +1,23 @@
 
 "use client";
 
-import type { Metadata } from 'next';
 import Link from 'next/link';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, FolderKanban, Wand2, MessagesSquare, FileUp } from 'lucide-react';
+import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import JSZip from 'jszip';
+import { analyzeGithubRepositoryAction } from '@/lib/actions';
 
-// Client-side dynamic title setting
-// export const metadata: Metadata = {
-//   title: '프로젝트 도우미 - 코드 인사이트',
-//   description: 'AI를 통해 프로젝트 구조를 분석하고 코드 수정을 받아보세요.',
-// };
 
 export default function ProjectHelperPage() {
-  const [projectInput, setProjectInput] = useState('');
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
-  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+  const [projectInput, setProjectInput] = useState(''); // Holds the combined code content
+  const [githubUrl, setGithubUrl] = useState('');
+  const [fileTree, setFileTree] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,40 +27,167 @@ export default function ProjectHelperPage() {
     }
   }, []);
 
+  const generateFileTree = (code: string): string => {
+    const filePaths = (code.match(/\/\/ FILE: (.*)/g) || []).map(line => line.replace(/\/\/ FILE: /, ''));
+    if (filePaths.length === 0) {
+      if (code.trim()) return '파일 구조를 파싱할 수 있는 마커(// FILE: ...)가 없습니다.';
+      return '분석할 파일이 없습니다.';
+    }
+
+    const root: any = {};
+
+    filePaths.forEach(path => {
+      let currentLevel = root;
+      const parts = path.split('/');
+      parts.forEach((part, index) => {
+        if (!currentLevel[part]) {
+          currentLevel[part] = (index === parts.length - 1) ? null : {};
+        }
+        currentLevel = currentLevel[part];
+      });
+    });
+    
+    const rootKeys = Object.keys(root);
+    let baseNode = root;
+    let baseName = '프로젝트 루트';
+    
+    if (rootKeys.length === 1 && root[rootKeys[0]] !== null) {
+        baseName = rootKeys[0];
+        baseNode = root[rootKeys[0]];
+    }
+
+    const buildTreeString = (node: any, prefix = ''): string => {
+        let result = '';
+        if (!node) return result;
+        const keys = Object.keys(node);
+        keys.forEach((key, index) => {
+            const isLast = index === keys.length - 1;
+            const connector = isLast ? '└── ' : '├── ';
+            result += `${prefix}${connector}${key}\n`;
+            if (node[key] !== null) { // It's a directory
+                const newPrefix = prefix + (isLast ? '    ' : '│   ');
+                result += buildTreeString(node[key], newPrefix);
+            }
+        });
+        return result;
+    };
+
+    return `${baseName}\n${buildTreeString(baseNode)}`;
+  };
+  
+  const processAndSetInput = (content: string, source: string) => {
+      setProjectInput(content);
+      const tree = generateFileTree(content);
+      setFileTree(tree);
+      toast({
+          title: "로드 성공",
+          description: `${source}에서 코드를 불러왔습니다. 파일 구조가 오른쪽에 표시됩니다.`,
+      });
+  };
+
+  const handleFetchFromRepo = async () => {
+    if (!githubUrl.trim()) return;
+    setIsLoading(true);
+    setFileTree(null);
+    setProjectInput('');
+    try {
+      const result = await analyzeGithubRepositoryAction({ repositoryUrl: githubUrl });
+      if (result.error) {
+        toast({ title: "저장소 분석 실패", description: result.error, variant: "destructive" });
+      } else if (result.combinedCode) {
+        processAndSetInput(result.combinedCode, `저장소 (${result.fileCount}개 파일)`);
+      } else {
+        toast({ title: "정보 없음", description: "저장소에서 분석할 수 있는 텍스트 파일을 찾지 못했습니다.", variant: "destructive" });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "코드를 가져오는 중 예상치 못한 오류가 발생했습니다.";
+      toast({ title: "오류", description: message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    setIsLoading(true);
+    setFileTree(null);
+    setProjectInput('');
+
+    if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result;
-        if (typeof text === 'string') {
-          setProjectInput(text);
-          toast({
-            title: "파일 로드 성공",
-            description: `"${file.name}" 파일의 내용이 성공적으로 로드되었습니다.`,
-          });
-        } else {
-          toast({
-            title: "파일 로드 실패",
-            description: "파일 내용을 읽는 중 오류가 발생했습니다.",
-            variant: "destructive",
-          });
+      reader.onload = async (e) => {
+        try {
+          const content = e.target?.result;
+          if (content instanceof ArrayBuffer) {
+            const zip = await JSZip.loadAsync(content);
+            let allCode = `// ${file.name} 압축 파일에서 추출된 코드\n// ======================================\n\n`;
+            const filePromises: Promise<void>[] = [];
+            
+            const textFileExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.swift', '.kt', '.kts', '.html', '.css', '.json', '.md', '.txt', 'Dockerfile', '.yml', '.yaml', '.sh', '.gitignore', '.npmrc', '.env.example'];
+            const textFileNames = ['LICENSE', 'README'];
+
+            zip.forEach((relativePath, zipEntry) => {
+                const isTextFile = !zipEntry.dir && (
+                    textFileNames.some(name => zipEntry.name.toLowerCase().endsWith(name.toLowerCase())) ||
+                    textFileExtensions.some(ext => zipEntry.name.endsWith(ext))
+                );
+              if (isTextFile) {
+                  const filePromise = zipEntry.async('string').then(fileContent => {
+                      allCode += `// FILE: ${zipEntry.name}\n// --------------------------------------\n${fileContent}\n\n`;
+                  });
+                  filePromises.push(filePromise);
+              }
+            });
+
+            await Promise.all(filePromises);
+            processAndSetInput(allCode, `"${file.name}"`);
+          } else {
+            throw new Error("파일을 ArrayBuffer로 읽지 못했습니다.");
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "ZIP 파일을 읽는 중 오류가 발생했습니다.";
+          toast({ title: "압축 파일 처리 오류", description: message, variant: "destructive" });
+        } finally {
+            setIsLoading(false);
         }
       };
       reader.onerror = () => {
-        toast({
-          title: "파일 로드 오류",
-          description: "파일을 읽는 중 오류가 발생했습니다.",
-          variant: "destructive",
-        });
+           toast({ title: "파일 로드 오류", description: "파일을 읽는 중 오류가 발생했습니다.", variant: "destructive" });
+           setIsLoading(false);
+      };
+      reader.readAsArrayBuffer(file);
+    } else { // Handle single text files
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+            const text = e.target?.result;
+            if (typeof text === 'string') {
+                processAndSetInput(`// FILE: ${file.name}\n// --------------------------------------\n${text}`, `"${file.name}"`);
+            } else {
+                toast({ title: "파일 로드 실패", description: "파일 내용을 읽는 중 오류가 발생했습니다.", variant: "destructive" });
+            }
+        } catch(error) {
+            const message = error instanceof Error ? error.message : "파일 처리 중 오류가 발생했습니다.";
+            toast({ title: "오류", description: message, variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+      };
+      reader.onerror = () => {
+        toast({ title: "파일 로드 오류", description: "파일을 읽는 중 오류가 발생했습니다.", variant: "destructive" });
+        setIsLoading(false);
       };
       reader.readAsText(file);
     }
-    // Reset file input to allow selecting the same file again
+
     if (fileInputRef.current) {
         fileInputRef.current.value = '';
     }
   };
+
 
   const handleUploadButtonClick = () => {
     fileInputRef.current?.click();
@@ -72,21 +196,15 @@ export default function ProjectHelperPage() {
   const handleAnalyzeProject = async () => {
     if (!projectInput.trim()) {
       toast({
-        title: "입력 오류",
-        description: "분석할 프로젝트 정보를 입력해주세요.",
+        title: "분석할 데이터 없음",
+        description: "먼저 GitHub 저장소나 파일을 로드해주세요.",
         variant: "destructive",
       });
       return;
     }
-    setIsLoadingAnalysis(true);
-    setAnalysisResult(null);
-    // Simulate AI analysis
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAnalysisResult(`프로젝트 분석 결과:\n입력된 정보는 ${projectInput.length}자 입니다.\n(실제 분석 로직이 여기에 추가될 것입니다.)`);
-    setIsLoadingAnalysis(false);
     toast({
-      title: "프로젝트 분석 시작",
-      description: "AI가 프로젝트 분석을 시작합니다. (데모)",
+      title: "AI 에이전트 준비",
+      description: "프로젝트에 대한 질문을 시작할 수 있습니다. (채팅 기능은 추후 구현됩니다.)",
     });
   };
 
@@ -119,38 +237,59 @@ export default function ProjectHelperPage() {
                 프로젝트 정보 입력
               </CardTitle>
               <CardDescription>
-                프로젝트 구조(예: `tree` 명령어 결과), 주요 파일 내용(`package.json` 등), 또는 단일 중요 파일의 내용을 붙여넣거나 아래 버튼으로 업로드하세요.
+                GitHub 저장소 URL을 입력하거나, 프로젝트 ZIP 또는 개별 파일을 업로드하여 AI 분석을 시작하세요.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex-grow flex flex-col">
-              <Textarea
-                value={projectInput}
-                onChange={(e) => setProjectInput(e.target.value)}
-                placeholder="여기에 프로젝트 관련 정보를 붙여넣거나 파일을 업로드하세요..."
-                className="h-full w-full resize-none font-mono text-sm p-3 rounded-md shadow-inner flex-grow min-h-[200px]"
-                aria-label="Project input area"
-                disabled={isLoadingAnalysis}
-              />
+            <CardContent className="space-y-4">
+                 <div className="space-y-2">
+                    <label htmlFor="github-url" className="text-sm font-medium">GitHub 저장소 URL</label>
+                    <div className="flex items-center gap-2">
+                        <Input
+                        id="github-url"
+                        value={githubUrl}
+                        onChange={(e) => setGithubUrl(e.target.value)}
+                        placeholder="https://github.com/owner/repo"
+                        className="h-10"
+                        disabled={isLoading}
+                        />
+                        <Button onClick={handleFetchFromRepo} disabled={isLoading || !githubUrl.trim()} className="shrink-0">
+                            <GitBranch className="mr-2 h-4 w-4" />
+                            {isLoading ? '분석 중...' : '가져오기'}
+                        </Button>
+                    </div>
+                </div>
+                 <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">
+                        또는
+                        </span>
+                    </div>
+                </div>
+                <div>
+                     <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept=".zip,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.swift,.kt,.kts,.html,.css,.json,.md,.txt" 
+                        className="hidden"
+                    />
+                    <Button onClick={handleUploadButtonClick} variant="outline" className="w-full" disabled={isLoading}>
+                        <FileUp className="mr-2 h-5 w-5" />
+                        파일 업로드 (.zip 포함)
+                    </Button>
+                </div>
             </CardContent>
-            <CardFooter className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.swift,.kt,.kts,.html,.css,.json,.md,.txt" 
-                className="hidden"
-              />
-              <Button onClick={handleUploadButtonClick} variant="outline" className="w-full sm:w-auto" disabled={isLoadingAnalysis}>
-                <FileUp className="mr-2 h-5 w-5" />
-                파일 내용 불러오기
-              </Button>
+            <CardFooter>
               <Button 
                 onClick={handleAnalyzeProject} 
-                disabled={isLoadingAnalysis || !projectInput.trim()} 
-                className="w-full sm:w-auto flex-grow"
+                disabled={isLoading || !projectInput.trim()} 
+                className="w-full"
               >
                 <Wand2 className="mr-2 h-5 w-5" />
-                {isLoadingAnalysis ? '분석 중...' : '프로젝트 분석 요청'}
+                {isLoading ? '분석 중...' : 'AI 에이전트와 대화 시작'}
               </Button>
             </CardFooter>
           </Card>
@@ -161,29 +300,28 @@ export default function ProjectHelperPage() {
           <Card className="flex-grow flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
-                <MessagesSquare className="h-5 w-5" />
-                AI 분석 및 수정 제안 (에이전트)
+                <FolderTree className="h-5 w-5" />
+                프로젝트 구조
               </CardTitle>
               <CardDescription>
-                프로젝트 분석 결과와 코드 수정 제안이 여기에 표시됩니다. AI 에이전트와 대화하여 코드를 변경할 수 있습니다.
+                로드된 프로젝트의 파일 구조입니다. 구조를 확인하고 AI 에이전트에게 코드 수정을 요청하세요.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-grow">
-              <ScrollArea className="h-full min-h-[300px] p-1 border rounded-md bg-muted/30">
-                {isLoadingAnalysis && (
-                  <div className="p-4 text-center text-muted-foreground">
-                    <p>프로젝트 정보를 분석 중입니다...</p>
-                    <p className="animate-pulse">잠시만 기다려주세요.</p>
+              <ScrollArea className="h-full min-h-[400px] p-1 border rounded-md bg-muted/30">
+                {isLoading && (
+                  <div className="p-4 text-center text-muted-foreground animate-pulse">
+                    <p>파일 구조를 생성하는 중입니다...</p>
                   </div>
                 )}
-                {!isLoadingAnalysis && analysisResult && (
-                  <pre className="p-4 text-sm whitespace-pre-wrap">{analysisResult}</pre>
+                {!isLoading && fileTree && (
+                  <pre className="p-4 text-sm whitespace-pre-wrap font-mono">{fileTree}</pre>
                 )}
-                {!isLoadingAnalysis && !analysisResult && (
+                {!isLoading && !fileTree && (
                   <div className="p-4 text-center text-muted-foreground h-full flex flex-col justify-center items-center">
                     <FolderKanban className="h-12 w-12 mb-4 opacity-50" />
-                    <p>왼쪽에 프로젝트 정보를 입력하고 "프로젝트 분석 요청" 버튼을 누르세요.</p>
-                    <p className="text-xs mt-2">AI가 구조를 파악하고 수정 제안을 준비합니다.</p>
+                    <p>왼쪽에서 GitHub 저장소나 파일을 로드하세요.</p>
+                    <p className="text-xs mt-2">파일 구조가 여기에 표시됩니다.</p>
                   </div>
                 )}
               </ScrollArea>
@@ -197,5 +335,3 @@ export default function ProjectHelperPage() {
     </div>
   );
 }
-
-    
