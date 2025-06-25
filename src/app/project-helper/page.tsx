@@ -478,79 +478,92 @@ export default function ProjectHelperPage() {
                 )}
               </TabsContent>
               <TabsContent value="impact" className="flex-grow mt-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <GitCompareArrows className="h-5 w-5 text-primary" />
-                        영향 분석
-                    </CardTitle>
-                    <CardDescription>
-                      파일을 선택하여 해당 파일의 의존성 및 다른 파일에 미치는 영향을 확인하세요.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Select onValueChange={setImpactFile} value={impactFile}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="분석할 파일을 선택하세요..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                          {fileMap && Array.from(fileMap.keys()).sort().map(path => (
-                              <SelectItem key={path} value={path}>{path}</SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    
-                    {impactFile ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-                        <Card>
-                          <CardHeader>
-                            <CardTitle className="text-lg flex items-center gap-2">
-                              <ArrowDownToLine className="h-5 w-5 text-primary" />
-                              의존성
+                <div className="flex flex-col gap-6 h-full">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <GitCompareArrows className="h-5 w-5 text-primary" />
+                                영향 분석
                             </CardTitle>
-                            <CardDescription>이 파일이 가져오는(import) 파일들입니다.</CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            <ScrollArea className="h-48">
-                                <ul className="space-y-1 text-sm">
-                                {impactDependencies.length > 0 ? (
-                                    impactDependencies.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
-                                ) : (
-                                    <li className="text-muted-foreground italic">의존성이 없습니다.</li>
-                                )}
-                                </ul>
-                            </ScrollArea>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardHeader>
-                            <CardTitle className="text-lg flex items-center gap-2">
-                              <ArrowUpFromLine className="h-5 w-5 text-primary" />
-                              영향받는 파일
-                            </CardTitle>
-                            <CardDescription>이 파일을 가져오는(import) 파일들입니다.</CardDescription>
-                          </CardHeader>
-                           <CardContent>
-                             <ScrollArea className="h-48">
-                                <ul className="space-y-1 text-sm">
-                                {impactDependents.length > 0 ? (
-                                    impactDependents.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
-                                ) : (
-                                    <li className="text-muted-foreground italic">이 파일을 사용하는 파일이 없습니다.</li>
-                                )}
-                                </ul>
-                              </ScrollArea>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    ) : (
-                       <div className="flex flex-col items-center justify-center text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg min-h-[200px]">
-                            <GitCompareArrows className="h-12 w-12 mb-4 opacity-50" />
-                            <p>위 드롭다운에서 파일을 선택하여 분석을 시작하세요.</p>
+                            <CardDescription>
+                              파일을 선택하여 코드를 확인하고, 해당 파일의 의존성 및 다른 파일에 미치는 영향을 분석하세요.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Select onValueChange={setImpactFile} value={impactFile} disabled={!fileMap}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="분석할 파일을 선택하세요..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {fileMap && Array.from(fileMap.keys()).sort().map(path => (
+                                        <SelectItem key={path} value={path}>{path}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </CardContent>
+                    </Card>
+
+                    {impactFile && fileMap ? (
+                       <div className="flex flex-col gap-6">
+                            <div className="min-h-[400px]">
+                                <CodeDisplay 
+                                    code={fileMap.get(impactFile) || ''}
+                                    fileName={impactFile}
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg flex items-center gap-2">
+                                    <ArrowDownToLine className="h-5 w-5 text-primary" />
+                                    의존성 (Dependencies)
+                                    </CardTitle>
+                                    <CardDescription>이 파일이 가져오는(import) 파일들입니다.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <ScrollArea className="h-48">
+                                        <ul className="space-y-1 text-sm">
+                                        {impactDependencies.length > 0 ? (
+                                            impactDependencies.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
+                                        ) : (
+                                            <li className="text-muted-foreground italic">의존성이 없습니다.</li>
+                                        )}
+                                        </ul>
+                                    </ScrollArea>
+                                </CardContent>
+                                </Card>
+                                <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg flex items-center gap-2">
+                                    <ArrowUpFromLine className="h-5 w-5 text-primary" />
+                                    영향받는 파일 (Dependents)
+                                    </CardTitle>
+                                    <CardDescription>이 파일을 가져오는(import) 파일들입니다.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <ScrollArea className="h-48">
+                                        <ul className="space-y-1 text-sm">
+                                        {impactDependents.length > 0 ? (
+                                            impactDependents.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
+                                        ) : (
+                                            <li className="text-muted-foreground italic">이 파일을 사용하는 파일이 없습니다.</li>
+                                        )}
+                                        </ul>
+                                    </ScrollArea>
+                                </CardContent>
+                                </Card>
+                            </div>
                         </div>
+                    ) : (
+                      <Card className="flex-grow flex items-center justify-center min-h-[400px]">
+                        <div className="text-center text-muted-foreground p-8">
+                            <GitCompareArrows className="h-16 w-16 mb-4 opacity-50 mx-auto" />
+                            <p className="text-lg">파일을 선택하여 영향 분석 시작</p>
+                            <p className="text-sm">위 드롭다운에서 파일을 선택하면 코드와 의존성 정보가 여기에 표시됩니다.</p>
+                        </div>
+                      </Card>
                     )}
-                  </CardContent>
-                </Card>
+                </div>
               </TabsContent>
             </Tabs>
           </div>
@@ -562,3 +575,5 @@ export default function ProjectHelperPage() {
     </ChatProvider>
   );
 }
+
+    
