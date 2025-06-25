@@ -1,6 +1,4 @@
 
-'use client'; 
-
 import path from 'path-browserify';
 
 export interface GraphNode {
