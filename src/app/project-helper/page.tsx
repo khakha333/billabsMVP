@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import { analyzeGithubRepositoryAction, analyzeDependenciesAction } from '@/lib/actions';
@@ -18,6 +18,9 @@ import { FileTreeDisplay } from '@/components/FileTreeDisplay';
 import { CodeDisplay } from '@/components/CodeDisplay';
 import { ChatProvider } from '@/contexts/ChatContext';
 import { ProjectVisualization } from '@/components/ProjectVisualization';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DependencyGraph } from '@/components/DependencyGraph';
+import { parseDependencies, type DependencyGraphData } from '@/lib/dependency-parser';
 
 
 interface TreeNode {
@@ -25,14 +28,14 @@ interface TreeNode {
 }
 
 export default function ProjectHelperPage() {
-  const [projectInput, setProjectInput] = useState('');
   const [githubUrl, setGithubUrl] = useState('');
   const [fileMap, setFileMap] = useState<Map<string, string> | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [dependencyAnalysis, setDependencyAnalysis] = useState<AnalyzeDependenciesOutput['dependencies'] | null>(null);
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
-  
+  const [dependencyGraphData, setDependencyGraphData] = useState<DependencyGraphData | null>(null);
+
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,14 +78,17 @@ export default function ProjectHelperPage() {
   }, [fileMap]);
   
   const processAndSetInput = (content: string, source: string) => {
-      setProjectInput(content);
       const parsedMap = parseProjectInput(content);
       setFileMap(parsedMap);
       setSelectedFile(null);
       setDependencyAnalysis(null);
+      
+      const graphData = parseDependencies(parsedMap);
+      setDependencyGraphData(graphData);
+      
       toast({
           title: "로드 성공",
-          description: `${source}에서 코드를 불러왔습니다. 파일 구조가 오른쪽에 표시됩니다.`,
+          description: `${source}에서 코드를 불러왔습니다. 파일 구조와 의존성 그래프가 생성되었습니다.`,
       });
 
       const packageJsonContent = parsedMap.get('package.json');
@@ -125,9 +131,9 @@ export default function ProjectHelperPage() {
     if (!githubUrl.trim()) return;
     setIsLoading(true);
     setFileMap(null);
-    setProjectInput('');
     setSelectedFile(null);
     setDependencyAnalysis(null);
+    setDependencyGraphData(null);
     try {
       const result = await analyzeGithubRepositoryAction({ repositoryUrl: githubUrl });
       if (result.error) {
@@ -152,9 +158,9 @@ export default function ProjectHelperPage() {
 
     setIsLoading(true);
     setFileMap(null);
-    setProjectInput('');
     setSelectedFile(null);
     setDependencyAnalysis(null);
+    setDependencyGraphData(null);
 
     if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
       const reader = new FileReader();
@@ -238,20 +244,6 @@ export default function ProjectHelperPage() {
     setSelectedFile(filePath);
   };
 
-  const handleAnalyzeProject = async () => {
-    if (!projectInput.trim()) {
-      toast({
-        title: "분석할 데이터 없음",
-        description: "먼저 GitHub 저장소나 파일을 로드해주세요.",
-        variant: "destructive",
-      });
-      return;
-    }
-    toast({
-      title: "AI 에이전트 준비",
-      description: "프로젝트에 대한 질문을 시작할 수 있습니다. (채팅 기능은 추후 구현됩니다.)",
-    });
-  };
 
   return (
     <ChatProvider focusChatInput={() => { /* No-op for now */ }}>
@@ -390,58 +382,84 @@ export default function ProjectHelperPage() {
 
           {/* Right Column: File Tree and Code Viewer */}
           <div className="lg:w-2/3 flex flex-col gap-6">
-            <Card className="flex-grow flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <FolderTree className="h-5 w-5" />
-                  프로젝트 구조
-                </CardTitle>
-                <CardDescription>
-                  로드된 프로젝트의 파일 구조입니다. 파일을 클릭하여 내용을 확인하세요.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-grow">
-                <ScrollArea className="h-full min-h-[200px] max-h-[300px] p-1 border rounded-md bg-muted/30">
-                  {isLoading && (
-                    <div className="p-4 text-center text-muted-foreground animate-pulse">
-                      <p>파일 구조를 생성하는 중입니다...</p>
-                    </div>
-                  )}
-                  {!isLoading && fileTreeObject && (
-                    <FileTreeDisplay
-                      tree={fileTreeObject}
-                      selectedFile={selectedFile}
-                      onFileSelect={handleFileSelect}
-                    />
-                  )}
-                  {!isLoading && !fileTreeObject && (
-                    <div className="p-4 text-center text-muted-foreground h-full flex flex-col justify-center items-center">
-                      <FolderKanban className="h-12 w-12 mb-4 opacity-50" />
-                      <p>왼쪽에서 GitHub 저장소나 파일을 로드하세요.</p>
-                      <p className="text-xs mt-2">파일 구조가 여기에 표시됩니다.</p>
-                    </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
+             <Tabs defaultValue="explorer" className="w-full flex-grow flex flex-col">
+              <TabsList className="w-full grid grid-cols-2">
+                <TabsTrigger value="explorer" className="flex-1">
+                  <FolderTree className="h-5 w-5 mr-2" />
+                  파일 탐색기
+                </TabsTrigger>
+                <TabsTrigger value="graph" className="flex-1" disabled={!dependencyGraphData}>
+                   <Share2 className="h-5 w-5 mr-2" />
+                   의존성 그래프
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="explorer" className="flex-grow mt-4 flex flex-col gap-6">
+                  <Card className="flex-grow flex flex-col">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-xl">
+                        <FolderTree className="h-5 w-5" />
+                        프로젝트 구조
+                      </CardTitle>
+                      <CardDescription>
+                        로드된 프로젝트의 파일 구조입니다. 파일을 클릭하여 내용을 확인하세요.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-grow">
+                      <ScrollArea className="h-full min-h-[200px] max-h-[300px] p-1 border rounded-md bg-muted/30">
+                        {isLoading && (
+                          <div className="p-4 text-center text-muted-foreground animate-pulse">
+                            <p>파일 구조를 생성하는 중입니다...</p>
+                          </div>
+                        )}
+                        {!isLoading && fileTreeObject && (
+                          <FileTreeDisplay
+                            tree={fileTreeObject}
+                            selectedFile={selectedFile}
+                            onFileSelect={handleFileSelect}
+                          />
+                        )}
+                        {!isLoading && !fileTreeObject && (
+                          <div className="p-4 text-center text-muted-foreground h-full flex flex-col justify-center items-center">
+                            <FolderKanban className="h-12 w-12 mb-4 opacity-50" />
+                            <p>왼쪽에서 GitHub 저장소나 파일을 로드하세요.</p>
+                            <p className="text-xs mt-2">파일 구조가 여기에 표시됩니다.</p>
+                          </div>
+                        )}
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
 
-            <div className="min-h-[400px]">
-              {selectedFile && fileMap ? (
-                <CodeDisplay 
-                  code={fileMap.get(selectedFile) || ''}
-                  fileName={selectedFile}
-                />
-              ) : (
-                <Card className="h-full flex items-center justify-center min-h-[400px]">
-                   <div className="text-center text-muted-foreground p-8">
-                    <FolderTree className="h-16 w-16 mb-4 opacity-50 mx-auto" />
-                    <p className="text-lg">코드 뷰어</p>
-                    <p className="text-sm">위 파일 트리에서 파일을 선택하면 여기에 코드가 표시됩니다.</p>
-                   </div>
-                </Card>
-              )}
-            </div>
-
+                  <div className="min-h-[400px]">
+                    {selectedFile && fileMap ? (
+                      <CodeDisplay 
+                        code={fileMap.get(selectedFile) || ''}
+                        fileName={selectedFile}
+                      />
+                    ) : (
+                      <Card className="h-full flex items-center justify-center min-h-[400px]">
+                         <div className="text-center text-muted-foreground p-8">
+                          <FolderTree className="h-16 w-16 mb-4 opacity-50 mx-auto" />
+                          <p className="text-lg">코드 뷰어</p>
+                          <p className="text-sm">위 파일 트리에서 파일을 선택하면 여기에 코드가 표시됩니다.</p>
+                         </div>
+                      </Card>
+                    )}
+                  </div>
+              </TabsContent>
+              <TabsContent value="graph" className="flex-grow mt-4">
+                {dependencyGraphData ? (
+                  <DependencyGraph graphData={dependencyGraphData} />
+                ) : (
+                  <Card className="h-full flex items-center justify-center min-h-[400px]">
+                     <div className="text-center text-muted-foreground p-8">
+                      <Share2 className="h-16 w-16 mb-4 opacity-50 mx-auto" />
+                      <p className="text-lg">의존성 그래프</p>
+                      <p className="text-sm">프로젝트를 로드하면 파일 간의 import 관계가 여기에 시각화됩니다.</p>
+                     </div>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
         </main>
         <footer className="py-4 text-center text-sm text-muted-foreground border-t">
