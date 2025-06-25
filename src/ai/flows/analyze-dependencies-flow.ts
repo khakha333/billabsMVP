@@ -11,7 +11,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-export const AnalyzeDependenciesInputSchema = z.object({
+const AnalyzeDependenciesInputSchema = z.object({
   packageJsonContent: z
     .string()
     .describe('The string content of a package.json file.'),
@@ -32,7 +32,7 @@ const DependencyInfoSchema = z.object({
     .describe('A brief, one-sentence description of the dependency in Korean.'),
 });
 
-export const AnalyzeDependenciesOutputSchema = z.object({
+const AnalyzeDependenciesOutputSchema = z.object({
   dependencies: z
     .array(DependencyInfoSchema)
     .describe('A list of analyzed dependencies.'),
