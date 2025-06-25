@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2 } from 'lucide-react';
+import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2, ArrowDownToLine, ArrowUpFromLine, GitCompareArrows } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import { analyzeGithubRepositoryAction, analyzeDependenciesAction } from '@/lib/actions';
@@ -35,6 +36,7 @@ export default function ProjectHelperPage() {
   const [dependencyAnalysis, setDependencyAnalysis] = useState<AnalyzeDependenciesOutput['dependencies'] | null>(null);
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
   const [dependencyGraphData, setDependencyGraphData] = useState<DependencyGraphData | null>(null);
+  const [impactFile, setImpactFile] = useState<string>('');
 
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -82,6 +84,7 @@ export default function ProjectHelperPage() {
       setFileMap(parsedMap);
       setSelectedFile(null);
       setDependencyAnalysis(null);
+      setImpactFile('');
       
       const graphData = parseDependencies(parsedMap);
       setDependencyGraphData(graphData);
@@ -244,6 +247,17 @@ export default function ProjectHelperPage() {
     setSelectedFile(filePath);
   };
 
+  const { dependencies: impactDependencies, dependents: impactDependents } = useMemo(() => {
+    if (!dependencyGraphData || !impactFile) return { dependencies: [], dependents: [] };
+    const dependencies = dependencyGraphData.edges
+        .filter(edge => edge.source === impactFile)
+        .map(edge => edge.target);
+    const dependents = dependencyGraphData.edges
+        .filter(edge => edge.target === impactFile)
+        .map(edge => edge.source);
+    return { dependencies, dependents };
+  }, [dependencyGraphData, impactFile]);
+
 
   return (
     <ChatProvider focusChatInput={() => { /* No-op for now */ }}>
@@ -383,7 +397,7 @@ export default function ProjectHelperPage() {
           {/* Right Column: File Tree and Code Viewer */}
           <div className="lg:w-2/3 flex flex-col gap-6">
              <Tabs defaultValue="explorer" className="w-full flex-grow flex flex-col">
-              <TabsList className="w-full grid grid-cols-2">
+              <TabsList className="w-full grid grid-cols-3">
                 <TabsTrigger value="explorer" className="flex-1">
                   <FolderTree className="h-5 w-5 mr-2" />
                   파일 탐색기
@@ -391,6 +405,10 @@ export default function ProjectHelperPage() {
                 <TabsTrigger value="graph" className="flex-1" disabled={!dependencyGraphData}>
                    <Share2 className="h-5 w-5 mr-2" />
                    의존성 그래프
+                </TabsTrigger>
+                <TabsTrigger value="impact" className="flex-1" disabled={!dependencyGraphData}>
+                   <GitCompareArrows className="h-5 w-5 mr-2" />
+                   영향 분석
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="explorer" className="flex-grow mt-4 flex flex-col gap-6">
@@ -458,6 +476,81 @@ export default function ProjectHelperPage() {
                      </div>
                   </Card>
                 )}
+              </TabsContent>
+              <TabsContent value="impact" className="flex-grow mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <GitCompareArrows className="h-5 w-5 text-primary" />
+                        영향 분석
+                    </CardTitle>
+                    <CardDescription>
+                      파일을 선택하여 해당 파일의 의존성 및 다른 파일에 미치는 영향을 확인하세요.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Select onValueChange={setImpactFile} value={impactFile}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="분석할 파일을 선택하세요..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                          {fileMap && Array.from(fileMap.keys()).sort().map(path => (
+                              <SelectItem key={path} value={path}>{path}</SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    {impactFile ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              <ArrowDownToLine className="h-5 w-5 text-primary" />
+                              의존성
+                            </CardTitle>
+                            <CardDescription>이 파일이 가져오는(import) 파일들입니다.</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <ScrollArea className="h-48">
+                                <ul className="space-y-1 text-sm">
+                                {impactDependencies.length > 0 ? (
+                                    impactDependencies.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
+                                ) : (
+                                    <li className="text-muted-foreground italic">의존성이 없습니다.</li>
+                                )}
+                                </ul>
+                            </ScrollArea>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              <ArrowUpFromLine className="h-5 w-5 text-primary" />
+                              영향받는 파일
+                            </CardTitle>
+                            <CardDescription>이 파일을 가져오는(import) 파일들입니다.</CardDescription>
+                          </CardHeader>
+                           <CardContent>
+                             <ScrollArea className="h-48">
+                                <ul className="space-y-1 text-sm">
+                                {impactDependents.length > 0 ? (
+                                    impactDependents.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
+                                ) : (
+                                    <li className="text-muted-foreground italic">이 파일을 사용하는 파일이 없습니다.</li>
+                                )}
+                                </ul>
+                              </ScrollArea>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    ) : (
+                       <div className="flex flex-col items-center justify-center text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg min-h-[200px]">
+                            <GitCompareArrows className="h-12 w-12 mb-4 opacity-50" />
+                            <p>위 드롭다운에서 파일을 선택하여 분석을 시작하세요.</p>
+                        </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </div>

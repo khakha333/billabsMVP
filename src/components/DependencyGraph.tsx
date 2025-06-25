@@ -64,7 +64,8 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
   
   // Force-directed layout simulation
   useEffect(() => {
-    if (nodes.length === 0 || draggingNode) {
+    // Stop simulation if there are no edges, or if dragging
+    if (edges.length === 0 || draggingNode) {
       if (simulationRef.current) {
         cancelAnimationFrame(simulationRef.current);
       }
@@ -73,27 +74,37 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
 
     const simulation = () => {
       setNodes(currentNodes => {
+        if (currentNodes.length === 0) return [];
+        
         const newNodes = currentNodes.map(n => ({ ...n }));
 
         // Forces
-        const k = Math.sqrt((VIEWBOX_WIDTH * VIEWBOX_HEIGHT) / newNodes.length);
         const repulsionStrength = -2000;
         const attractionStrength = 0.5;
         const idealEdgeLength = 100;
+        const centerGravity = 0.05;
 
-        // Apply repulsion between all nodes
+        // Apply forces
         for (let i = 0; i < newNodes.length; i++) {
+          const ni = newNodes[i];
+
+          // Center gravity
+          const dxToCenter = VIEWBOX_WIDTH / 2 - ni.x;
+          const dyToCenter = VIEWBOX_HEIGHT / 2 - ni.y;
+          ni.vx += dxToCenter * centerGravity * 0.01;
+          ni.vy += dyToCenter * centerGravity * 0.01;
+
+          // Repulsion from other nodes
           for (let j = i + 1; j < newNodes.length; j++) {
-            const ni = newNodes[i];
             const nj = newNodes[j];
             const dx = nj.x - ni.x;
             const dy = nj.y - ni.y;
-            let dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist === 0) dist = 0.1;
+            let distSq = dx * dx + dy * dy;
+            if (distSq === 0) distSq = 0.1;
             
-            const force = (repulsionStrength / (dist * dist));
-            const forceX = (dx / dist) * force;
-            const forceY = (dy / dist) * force;
+            const force = repulsionStrength / distSq;
+            const forceX = dx * force;
+            const forceY = dy * force;
 
             ni.vx += forceX;
             ni.vy += forceY;
@@ -109,9 +120,10 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
           const dx = target.x - source.x;
           const dy = target.y - source.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist === 0) continue;
 
           const displacement = dist - idealEdgeLength;
-          const force = attractionStrength * displacement;
+          const force = attractionStrength * displacement * 0.1;
           const forceX = (dx / dist) * force;
           const forceY = (dy / dist) * force;
 
@@ -137,12 +149,12 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
           }
 
           // Damping
-          node.vx *= 0.95;
-          node.vy *= 0.95;
+          node.vx *= 0.9;
+          node.vy *= 0.9;
           
           // Boundary check
-          node.x = Math.max(10, Math.min(VIEWBOX_WIDTH - 10, node.x));
-          node.y = Math.max(10, Math.min(VIEWBOX_HEIGHT - 10, node.y));
+          node.x = Math.max(20, Math.min(VIEWBOX_WIDTH - 20, node.x));
+          node.y = Math.max(20, Math.min(VIEWBOX_HEIGHT - 20, node.y));
         });
 
         return newNodes;
@@ -158,12 +170,12 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
         cancelAnimationFrame(simulationRef.current);
       }
     };
-  }, [nodes, edges, draggingNode]);
+  }, [edges, draggingNode]); // Depend only on edges and dragging state
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>, node: Node) => {
     e.preventDefault();
+    e.stopPropagation();
     setDraggingNode(node);
-    if(simulationRef.current) cancelAnimationFrame(simulationRef.current);
   };
   
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -176,7 +188,13 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
     setNodes(prevNodes =>
       prevNodes.map(n => {
         if (n.id === draggingNode.id) {
-          return { ...n, fx: x, fy: y, x: x, y: y };
+          const updatedNode = { ...n, fx: x, fy: y };
+          if (n.fx === null || n.fy === null) {
+            // Fix position immediately on first drag move
+            updatedNode.x = x;
+            updatedNode.y = y;
+          }
+          return updatedNode;
         }
         return n;
       })
@@ -191,11 +209,15 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
 
   useEffect(() => {
     if (!draggingNode) return;
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp, { once: true });
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
+      container.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [draggingNode, handleMouseMove, handleMouseUp]);
@@ -223,18 +245,17 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
         <CardTitle>의존성 그래프</CardTitle>
         <CardDescription>파일 간의 import 관계를 시각화합니다. 노드를 드래그할 수 있습니다.</CardDescription>
       </CardHeader>
-      <CardContent className="flex-grow relative border rounded-md overflow-hidden" ref={containerRef}>
+      <CardContent className="flex-grow relative border rounded-md overflow-hidden bg-muted/20">
         <div className="absolute top-2 right-2 z-10 flex gap-1">
           <Button variant="outline" size="icon" onClick={() => setZoom(z => z * 1.2)}><ZoomIn/></Button>
           <Button variant="outline" size="icon" onClick={() => setZoom(z => z / 1.2)}><ZoomOut/></Button>
           <Button variant="outline" size="icon" onClick={resetSimulation}><RefreshCw/></Button>
         </div>
-        <div className='w-full h-full'>
+        <div className='w-full h-full' ref={containerRef}>
           <svg
             width="100%"
             height="100%"
             viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-            className="bg-muted/20"
           >
             <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
               {edges.map((edge, i) => (
@@ -245,30 +266,27 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
                   x2={edge.target.x}
                   y2={edge.target.y}
                   stroke="hsl(var(--border))"
-                  strokeWidth={1 / zoom}
+                  strokeWidth={1.5 / zoom}
                 />
+              ))}
+               {nodes.map(node => (
+                 <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
+                    <foreignObject 
+                      x="-75" y="-20" width="150" height="40"
+                      className="overflow-visible"
+                    >
+                      <div
+                        onMouseDown={e => handleMouseDown(e, node)}
+                        className="bg-card border rounded-md px-2 py-1 text-xs shadow-md cursor-grab active:cursor-grabbing w-[150px] text-center truncate"
+                        title={node.id}
+                      >
+                        {getShortName(node.id)}
+                      </div>
+                    </foreignObject>
+                 </g>
               ))}
             </g>
           </svg>
-          <div className="absolute inset-0 pointer-events-none">
-            <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: `${VIEWBOX_WIDTH}px`, height: `${VIEWBOX_HEIGHT}px` }}>
-              {nodes.map(node => (
-                <div
-                  key={node.id}
-                  onMouseDown={e => handleMouseDown(e, node)}
-                  className="absolute bg-card border rounded-md px-2 py-1 text-xs shadow-md cursor-grab active:cursor-grabbing pointer-events-auto"
-                  style={{
-                    left: `${node.x}px`,
-                    top: `${node.y}px`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  title={node.id}
-                >
-                  {getShortName(node.id)}
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </CardContent>
     </Card>
