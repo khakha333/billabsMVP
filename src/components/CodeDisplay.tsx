@@ -5,9 +5,9 @@ import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { CodeToken } from './CodeToken';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription as DialogDesc, DialogClose } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FileText, Wand2, MessageSquareText, MessageSquarePlus } from 'lucide-react';
 import { explainCodeSegmentAction } from '@/lib/actions';
@@ -16,6 +16,7 @@ import { useChatContext } from '@/contexts/ChatContext';
 
 interface CodeDisplayProps {
   code: string;
+  fileName?: string;
 }
 
 const tokenizeCode = (code: string): string[] => {
@@ -94,7 +95,7 @@ const extractFunctionNameFromLine = (line: string): string | null => {
 };
 
 
-export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
+export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName }) => {
   const codeDisplayRef = useRef<HTMLDivElement>(null);
   const lines = code.split('\n');
   const { focusChatInput } = useChatContext();
@@ -223,10 +224,16 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
   return (
     <Card className="h-full flex flex-col relative" ref={codeDisplayRef}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-xl">
-          <FileText className="h-6 w-6 text-primary" />
-          대화형 코드 보기
+        <CardTitle className="flex items-center gap-2 text-xl truncate">
+          <FileText className="h-6 w-6 text-primary flex-shrink-0" />
+          <span className="truncate" title={fileName}>{fileName || '대화형 코드 보기'}</span>
         </CardTitle>
+        <CardDescription>
+          {fileName
+            ? '코드에서 함수나 특정 영역을 클릭/선택하여 AI 설명을 요청할 수 있습니다.'
+            : '분석된 코드의 대화형 보기입니다.'
+          }
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden p-0">
         <ScrollArea className="h-full p-4">
@@ -289,7 +296,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code }) => {
                 <Wand2 className="h-5 w-5 text-primary" />
                 {currentDialogTitle}
             </DialogTitle>
-            <DialogDescription>AI가 생성한 코드 조각에 대한 설명입니다.</DialogDescription>
+            <DialogDesc>AI가 생성한 코드 조각에 대한 설명입니다.</DialogDesc>
           </DialogHeader>
           <div className="flex-grow overflow-y-auto pr-2 space-y-4 py-2">
             {currentSegmentForDialogExplanation && (
