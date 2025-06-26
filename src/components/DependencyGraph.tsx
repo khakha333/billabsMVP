@@ -32,32 +32,54 @@ interface DependencyGraphProps {
   onNodeClick: (nodeId: string | null) => void;
 }
 
+
 const getEdgeEndpoints = (source: Node, target: Node) => {
-  const w = NODE_WIDTH / 2;
-  const h = NODE_HEIGHT / 2;
+  // Vector from source to target
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
 
-  const calculateIntersection = (from: Node, to: Node) => {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
+  // Function to calculate intersection point on a node's boundary, relative to its center
+  const calculateIntersection = (angle: number) => {
+    const w = NODE_WIDTH / 2;
+    const h = NODE_HEIGHT / 2;
     
-    if (dx === 0 && dy === 0) return { x: to.x, y: to.y };
+    // Angle of the rectangle's corner diagonal
+    const rectCornerAngle = Math.atan2(h, w);
+    
+    // The angle of the line from the node center, normalized to be between 0 and PI/2
+    const lineAngle = Math.abs((angle % Math.PI + Math.PI) % Math.PI);
 
-    if (Math.abs(dy * w) > Math.abs(dx * h)) {
-      // Steeper slope, intersects with top/bottom
-      const t = h / Math.abs(dy);
-      return { x: to.x - dx * t, y: to.y - dy * t };
+    let x, y;
+    // Determine which side the line intersects based on its angle relative to the corner angle
+    if (lineAngle > rectCornerAngle && lineAngle < Math.PI - rectCornerAngle) {
+        // Intersects top or bottom side
+        const sign = Math.sin(angle) > 0 ? 1 : -1;
+        y = h * sign;
+        x = y / Math.tan(angle);
     } else {
-      // Flatter slope, intersects with left/right
-      const t = w / Math.abs(dx);
-      return { x: to.x - dx * t, y: to.y - dy * t };
+        // Intersects left or right side
+        const sign = Math.cos(angle) > 0 ? 1 : -1;
+        x = w * sign;
+        y = x * Math.tan(angle);
     }
+
+    return { x, y };
   };
 
-  const sourcePoint = calculateIntersection(target, source);
-  const targetPoint = calculateIntersection(source, target);
+  // Angle from source to target
+  const angleToTarget = Math.atan2(dy, dx);
+  // Angle from target to source
+  const angleToSource = Math.atan2(-dy, -dx);
 
-  return { sourcePoint, targetPoint };
-}
+  const sourceOffset = calculateIntersection(angleToTarget);
+  const targetOffset = calculateIntersection(angleToSource);
+  
+  // Return absolute coordinates
+  return { 
+    sourcePoint: { x: source.x + sourceOffset.x, y: source.y + sourceOffset.y },
+    targetPoint: { x: target.x + targetOffset.x, y: target.y + targetOffset.y }
+  };
+};
 
 
 export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, highlightedNodeId, onNodeClick }) => {
@@ -90,9 +112,9 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     if (simEdges.some(e => !e.source || !e.target)) return;
 
     const iterations = 250;
-    const repulsionStrength = -4000;
-    const attractionStrength = 0.4;
-    const idealEdgeLength = 180;
+    const repulsionStrength = -5000;
+    const attractionStrength = 0.3;
+    const idealEdgeLength = 220;
     const centerGravity = 0.1;
 
     for (let k = 0; k < iterations; k++) {
@@ -245,14 +267,14 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
         </div>
         <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}>
           <defs>
-            <marker id="arrowhead" viewBox="-0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto">
-              <path d="M0,-5L10,0L0,5" fill="hsl(var(--border))" opacity="0.6" />
+            <marker id="arrowhead" viewBox="-0 -4 8 8" refX="8" refY="0" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0,-4L8,0L0,4Z" fill="hsl(var(--border))" opacity="0.6" />
             </marker>
-            <marker id="arrowhead-highlight" viewBox="-0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto">
-              <path d="M0,-5L10,0L0,5" fill="hsl(var(--primary))" opacity="1" />
+            <marker id="arrowhead-highlight" viewBox="-0 -4 8 8" refX="8" refY="0" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0,-4L8,0L0,4Z" fill="hsl(var(--primary))" opacity="1" />
             </marker>
-            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor={isDark ? '#000' : '#000'} floodOpacity="0.2" />
+            <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor={isDark ? '#000000' : '#000000'} floodOpacity="0.2" />
             </filter>
           </defs>
           <rect width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill="transparent" onClick={() => onNodeClick(null)} />
@@ -260,7 +282,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
             {edges.map((edge, i) => {
               const edgeId = `${edge.source.id}->${edge.target.id}`;
               const isHighlighted = highlightedEdges.has(edgeId);
-              const opacity = highlightedNodeId ? (isHighlighted ? 0.9 : 0.15) : 0.6;
+              const opacity = highlightedNodeId ? (isHighlighted ? 0.9 : 0.1) : 0.6;
               const { sourcePoint, targetPoint } = getEdgeEndpoints(edge.source, edge.target);
 
               return (
@@ -268,9 +290,9 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                   key={i}
                   x1={sourcePoint.x} y1={sourcePoint.y}
                   x2={targetPoint.x} y2={targetPoint.y}
-                  stroke="hsl(var(--border))"
+                  stroke={isHighlighted ? "hsl(var(--primary))" : "hsl(var(--border))"}
                   strokeWidth={isHighlighted ? 1.5 / zoom : 0.8 / zoom}
-                  style={{ opacity, transition: 'opacity 0.3s' }}
+                  style={{ opacity, transition: 'all 0.3s' }}
                   markerEnd={isHighlighted ? "url(#arrowhead-highlight)" : "url(#arrowhead)"}
                 />
               );
@@ -278,7 +300,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
             {nodes.map(node => {
               const isPrimary = node.id === highlightedNodeId;
               const isNeighbor = highlightedNodes.has(node.id) && !isPrimary;
-              const opacity = highlightedNodeId ? (isPrimary || isNeighbor ? 1 : 0.3) : 1;
+              const opacity = highlightedNodeId ? (isPrimary || isNeighbor ? 1 : 0.2) : 1;
               const shortName = getShortName(node.id);
               return (
                 <g 
@@ -288,6 +310,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                   onClick={e => { e.stopPropagation(); onNodeClick(node.id); }}
                   className="cursor-pointer group"
                   style={{ opacity, transition: 'opacity 0.3s' }}
+                  filter="url(#shadow)"
                 >
                   <title>{node.id}</title>
                   <rect 
@@ -296,8 +319,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                     rx="8"
                     fill={isPrimary ? 'hsl(var(--primary))' : 'hsl(var(--card))'}
                     stroke={isPrimary ? 'hsl(var(--primary))' : isNeighbor ? 'hsl(var(--accent))' : 'hsl(var(--border))'}
-                    strokeWidth={isPrimary ? 1.5 / zoom : 1 / zoom}
-                    filter="url(#shadow)"
+                    strokeWidth={isPrimary ? 2 / zoom : 1 / zoom}
                     className="transition-colors"
                   />
                   <text
