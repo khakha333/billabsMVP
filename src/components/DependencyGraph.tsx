@@ -23,8 +23,8 @@ interface Edge {
 
 const VIEWBOX_WIDTH = 1000;
 const VIEWBOX_HEIGHT = 800;
-const NODE_WIDTH = 150;
-const NODE_HEIGHT = 30;
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 32;
 
 interface DependencyGraphProps {
   graphData: DependencyGraphData | null;
@@ -40,139 +40,123 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
-  const simulationRef = useRef<number>();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const isDark = useMemo(() => {
+      if (!isClient) return false;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }, [isClient]);
+
+  const runSimulation = useCallback((currentNodes: Node[], currentEdges: Edge[]) => {
+    let newNodes: Node[] = JSON.parse(JSON.stringify(currentNodes));
+
+    const nodeMap = new Map(newNodes.map((n: Node) => [n.id, n]));
+    const simEdges = currentEdges.map(edge => ({
+        source: nodeMap.get(edge.source.id)!,
+        target: nodeMap.get(edge.target.id)!,
+    }));
+    
+    if (simEdges.some(e => !e.source || !e.target)) return;
+
+    const iterations = 250;
+    const repulsionStrength = -4000;
+    const attractionStrength = 0.4;
+    const idealEdgeLength = 180;
+    const centerGravity = 0.1;
+
+    for (let k = 0; k < iterations; k++) {
+        for (let i = 0; i < newNodes.length; i++) {
+            const ni = newNodes[i];
+            if (k === 0) { ni.vx = 0; ni.vy = 0; }
+            const dxToCenter = VIEWBOX_WIDTH / 2 - ni.x;
+            const dyToCenter = VIEWBOX_HEIGHT / 2 - ni.y;
+            ni.vx += dxToCenter * centerGravity * 0.01;
+            ni.vy += dyToCenter * centerGravity * 0.01;
+
+            for (let j = i + 1; j < newNodes.length; j++) {
+                const nj = newNodes[j];
+                const dx = nj.x - ni.x;
+                const dy = nj.y - ni.y;
+                let distSq = dx * dx + dy * dy;
+                if (distSq === 0) distSq = 0.1;
+                const force = repulsionStrength / distSq;
+                const forceX = (dx / Math.sqrt(distSq)) * force;
+                const forceY = (dy / Math.sqrt(distSq)) * force;
+                ni.vx += forceX; ni.vy += forceY;
+                nj.vx -= forceX; nj.vy -= forceY;
+            }
+        }
+        
+        simEdges.forEach(edge => {
+            const source = edge.source; const target = edge.target;
+            const dx = target.x - source.x; const dy = target.y - source.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist === 0) return;
+            const displacement = dist - idealEdgeLength;
+            const force = attractionStrength * displacement * 0.1;
+            const forceX = (dx / dist) * force; const forceY = (dy / dist) * force;
+            source.vx += forceX; source.vy += forceY;
+            target.vx -= forceX; target.vy -= forceY;
+        });
+
+        newNodes.forEach((node: Node) => {
+            if (node.fx != null) { node.x = node.fx; node.vx = 0; } else { node.x += node.vx; }
+            if (node.fy != null) { node.y = node.fy; node.vy = 0; } else { node.y += node.vy; }
+            node.vx *= 0.90; node.vy *= 0.90;
+            node.x = Math.max(NODE_WIDTH/2, Math.min(VIEWBOX_WIDTH - NODE_WIDTH/2, node.x));
+            node.y = Math.max(NODE_HEIGHT/2, Math.min(VIEWBOX_HEIGHT - NODE_HEIGHT/2, node.y));
+        });
+    }
+
+    setNodes(newNodes);
+  }, []);
 
   const resetSimulation = useCallback(() => {
     if (!graphData) return;
     
     const initialNodes: Node[] = graphData.nodes.map(node => ({
       ...node,
-      x: Math.random() * VIEWBOX_WIDTH,
-      y: Math.random() * VIEWBOX_HEIGHT,
-      vx: 0,
-      vy: 0,
+      x: Math.random() * VIEWBOX_WIDTH * 0.6 + VIEWBOX_WIDTH * 0.2,
+      y: Math.random() * VIEWBOX_HEIGHT* 0.6 + VIEWBOX_HEIGHT * 0.2,
+      vx: 0, vy: 0,
     }));
 
     const nodeMap = new Map(initialNodes.map(n => [n.id, n]));
     const initialEdges: Edge[] = graphData.edges
-      .map(({ source, target }) => ({
-        source: nodeMap.get(source)!,
-        target: nodeMap.get(target)!,
-      }))
+      .map(({ source, target }) => ({ source: nodeMap.get(source)!, target: nodeMap.get(target)! }))
       .filter(edge => edge.source && edge.target);
 
-    setNodes(initialNodes);
     setEdges(initialEdges);
+    runSimulation(initialNodes, initialEdges);
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, [graphData]);
+  }, [graphData, runSimulation]);
 
-  useEffect(() => {
-    resetSimulation();
-  }, [graphData, resetSimulation]);
-
+  useEffect(() => { resetSimulation(); }, [graphData, resetSimulation]);
+  
   const { highlightedNodes, highlightedEdges } = useMemo(() => {
     if (!highlightedNodeId || !graphData) {
       return { highlightedNodes: new Set<string>(), highlightedEdges: new Set<string>() };
     }
     const nodes = new Set<string>([highlightedNodeId]);
-    const edges = new Set<string>();
-
+    const edgesSet = new Set<string>();
     graphData.edges.forEach(edge => {
       const edgeId = `${edge.source}->${edge.target}`;
-      if (edge.source === highlightedNodeId) {
-        nodes.add(edge.target);
-        edges.add(edgeId);
-      }
-      if (edge.target === highlightedNodeId) {
-        nodes.add(edge.source);
-        edges.add(edgeId);
-      }
+      if (edge.source === highlightedNodeId) { nodes.add(edge.target); edgesSet.add(edgeId); }
+      if (edge.target === highlightedNodeId) { nodes.add(edge.source); edgesSet.add(edgeId); }
     });
-    
-    return { highlightedNodes: nodes, highlightedEdges: edges };
+    return { highlightedNodes: nodes, highlightedEdges: edgesSet };
   }, [highlightedNodeId, graphData]);
-  
-  // Force-directed layout simulation
-  useEffect(() => {
-    if (edges.length === 0 || draggingNode) {
-      if (simulationRef.current) cancelAnimationFrame(simulationRef.current);
-      return;
-    }
-
-    const simulation = () => {
-      setNodes(currentNodes => {
-        if (currentNodes.length === 0) return [];
-        
-        const newNodes = currentNodes.map(n => ({ ...n }));
-
-        const repulsionStrength = -3000;
-        const attractionStrength = 0.6;
-        const idealEdgeLength = 150;
-        const centerGravity = 0.05;
-
-        for (let i = 0; i < newNodes.length; i++) {
-          const ni = newNodes[i];
-          const dxToCenter = VIEWBOX_WIDTH / 2 - ni.x;
-          const dyToCenter = VIEWBOX_HEIGHT / 2 - ni.y;
-          ni.vx += dxToCenter * centerGravity * 0.01;
-          ni.vy += dyToCenter * centerGravity * 0.01;
-          for (let j = i + 1; j < newNodes.length; j++) {
-            const nj = newNodes[j];
-            const dx = nj.x - ni.x;
-            const dy = nj.y - ni.y;
-            let distSq = dx * dx + dy * dy;
-            if (distSq === 0) distSq = 0.1;
-            const force = repulsionStrength / distSq;
-            ni.vx += dx * force;
-            ni.vy += dy * force;
-            nj.vx -= dx * force;
-            nj.vy -= dy * force;
-          }
-        }
-        
-        edges.forEach(edge => {
-          const source = newNodes.find(n => n.id === edge.source.id)!;
-          const target = newNodes.find(n => n.id === edge.target.id)!;
-          const dx = target.x - source.x;
-          const dy = target.y - source.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist === 0) return;
-          const displacement = dist - idealEdgeLength;
-          const force = attractionStrength * displacement * 0.1;
-          const forceX = (dx / dist) * force;
-          const forceY = (dy / dist) * force;
-          source.vx += forceX;
-          source.vy += forceY;
-          target.vx -= forceX;
-          target.vy -= forceY;
-        });
-
-        newNodes.forEach(node => {
-          if (node.fx != null) node.x = node.fx; else node.x += node.vx;
-          if (node.fy != null) node.y = node.fy; else node.y += node.vy;
-          node.vx *= 0.95;
-          node.vy *= 0.95;
-          node.x = Math.max(NODE_WIDTH/2, Math.min(VIEWBOX_WIDTH - NODE_WIDTH/2, node.x));
-          node.y = Math.max(NODE_HEIGHT/2, Math.min(VIEWBOX_HEIGHT - NODE_HEIGHT/2, node.y));
-        });
-
-        return newNodes;
-      });
-
-      simulationRef.current = requestAnimationFrame(simulation);
-    };
-
-    simulationRef.current = requestAnimationFrame(simulation);
-    return () => { if (simulationRef.current) cancelAnimationFrame(simulationRef.current); };
-  }, [edges, draggingNode]);
 
   const handleMouseDown = (e: React.MouseEvent, node: Node) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDraggingNode(node);
+    e.preventDefault(); e.stopPropagation();
+    setDraggingNode({ ...node, vx: 0, vy: 0 });
   };
-  
+
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!draggingNode || !svgRef.current) return;
     const CTM = svgRef.current.getScreenCTM();
@@ -186,21 +170,23 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
 
   const handleMouseUp = useCallback(() => {
     if (!draggingNode) return;
-    setNodes(prevNodes => prevNodes.map(n => n.id === draggingNode.id ? { ...n, fx: null, fy: null } : n));
+    const unpinnedNodes = nodes.map(n => n.id === draggingNode.id ? { ...n, fx: null, fy: null } : n);
     setDraggingNode(null);
-  }, [draggingNode]);
+    runSimulation(unpinnedNodes, edges);
+  }, [draggingNode, nodes, edges, runSimulation]);
 
   useEffect(() => {
     const svgElement = svgRef.current;
     if (!draggingNode || !svgElement) return;
-    svgElement.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp, { once: true });
+    const onMove = (e: MouseEvent) => handleMouseMove(e);
+    const onUp = () => handleMouseUp();
+    svgElement.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp, { once: true });
     return () => {
-      svgElement.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      svgElement.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
     };
   }, [draggingNode, handleMouseMove, handleMouseUp]);
-
 
   if (!graphData || nodes.length === 0) {
     return (
@@ -231,22 +217,32 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
           <Button variant="outline" size="icon" onClick={resetSimulation}><RefreshCw/></Button>
         </div>
         <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}>
+          <defs>
+            <marker id="arrowhead" viewBox="-0 -5 10 10" refX="13" refY="0" markerWidth="8" markerHeight="8" orient="auto">
+              <path d="M0,-5L10,0L0,5" fill="hsl(var(--border))" opacity="0.6" />
+            </marker>
+            <marker id="arrowhead-highlight" viewBox="-0 -5 10 10" refX="13" refY="0" markerWidth="8" markerHeight="8" orient="auto">
+              <path d="M0,-5L10,0L0,5" fill="hsl(var(--primary))" opacity="1" />
+            </marker>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor={isDark ? '#000' : '#000'} floodOpacity="0.2" />
+            </filter>
+          </defs>
           <rect width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill="transparent" onClick={() => onNodeClick(null)} />
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
             {edges.map((edge, i) => {
               const edgeId = `${edge.source.id}->${edge.target.id}`;
               const isHighlighted = highlightedEdges.has(edgeId);
-              const opacity = highlightedNodeId ? (isHighlighted ? 0.8 : 0.1) : 0.5;
+              const opacity = highlightedNodeId ? (isHighlighted ? 0.9 : 0.15) : 0.6;
               return (
                 <line
                   key={i}
-                  x1={edge.source.x}
-                  y1={edge.source.y}
-                  x2={edge.target.x}
-                  y2={edge.target.y}
+                  x1={edge.source.x} y1={edge.source.y}
+                  x2={edge.target.x} y2={edge.target.y}
                   stroke="hsl(var(--border))"
-                  strokeWidth={isHighlighted ? 2 / zoom : 1 / zoom}
-                  style={{ opacity, transition: 'opacity 0.2s' }}
+                  strokeWidth={isHighlighted ? 1.5 / zoom : 0.8 / zoom}
+                  style={{ opacity, transition: 'opacity 0.3s' }}
+                  markerEnd={isHighlighted ? "url(#arrowhead-highlight)" : "url(#arrowhead)"}
                 />
               );
             })}
@@ -261,26 +257,26 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                   transform={`translate(${node.x}, ${node.y})`}
                   onMouseDown={e => handleMouseDown(e, node)}
                   onClick={e => { e.stopPropagation(); onNodeClick(node.id); }}
-                  className="cursor-pointer"
-                  style={{ opacity, transition: 'opacity 0.2s' }}
+                  className="cursor-pointer group"
+                  style={{ opacity, transition: 'opacity 0.3s' }}
                 >
                   <title>{node.id}</title>
                   <rect 
-                    x={-NODE_WIDTH / 2} 
-                    y={-NODE_HEIGHT / 2}
-                    width={NODE_WIDTH} 
-                    height={NODE_HEIGHT}
+                    x={-NODE_WIDTH / 2} y={-NODE_HEIGHT / 2}
+                    width={NODE_WIDTH} height={NODE_HEIGHT}
                     rx="8"
                     fill={isPrimary ? 'hsl(var(--primary))' : 'hsl(var(--card))'}
                     stroke={isPrimary ? 'hsl(var(--primary))' : isNeighbor ? 'hsl(var(--accent))' : 'hsl(var(--border))'}
-                    strokeWidth={isPrimary ? 2 / zoom : 1 / zoom}
+                    strokeWidth={isPrimary ? 1.5 / zoom : 1 / zoom}
+                    filter="url(#shadow)"
+                    className="transition-colors"
                   />
                   <text
                     fill={isPrimary ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))'}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
+                    textAnchor="middle" dominantBaseline="middle"
                     fontSize="12"
-                    className="pointer-events-none select-none font-medium"
+                    className="pointer-events-none select-none font-medium transition-colors"
+                    style={{ letterSpacing: '0.2px' }}
                   >
                     {shortName.length > 22 ? `${shortName.substring(0, 20)}...` : shortName}
                   </text>
