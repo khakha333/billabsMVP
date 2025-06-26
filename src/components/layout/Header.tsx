@@ -1,4 +1,4 @@
-import { Code2, Library, FolderKanban } from 'lucide-react';
+import { Code2, Library, FolderKanban, Component } from 'lucide-react';
 import type React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,12 @@ export const Header: React.FC = () => {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/ui-generator" passHref>
+            <Button variant="outline">
+              <Component className="mr-2 h-5 w-5" />
+              UI 생성기
+            </Button>
+          </Link>
           <Link href="/project-helper" passHref>
             <Button variant="outline">
               <FolderKanban className="mr-2 h-5 w-5" />
