@@ -60,10 +60,10 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     if (simEdges.some(e => !e.source || !e.target)) return;
 
     const iterations = 300;
-    const repulsionStrength = -4000;
-    const attractionStrength = 0.2;
-    const idealEdgeLength = 300;
-    const centerGravity = 0.02;
+    const repulsionStrength = -100000;
+    const attractionStrength = 0.03;
+    const idealEdgeLength = 400;
+    const centerGravity = 0.01;
 
     for (let k = 0; k < iterations; k++) {
         for (let i = 0; i < newNodes.length; i++) {
@@ -182,9 +182,6 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
   }, [draggingNode]);
 
   const handleMouseUp = useCallback(() => {
-    // When the mouse is released, we keep the node's position fixed (fx, fy).
-    // The simulation respects fx/fy, so it will stay put.
-    // We remove the dragging state. No re-simulation is needed.
     setDraggingNode(null);
   }, []);
 
@@ -193,7 +190,6 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     if (!draggingNode || !svgElement) return;
 
     const onMove = (e: MouseEvent) => handleMouseMove(e);
-    // Use a window listener for mouseup to catch releases outside the SVG
     const onUp = () => handleMouseUp();
 
     svgElement.addEventListener('mousemove', onMove);
