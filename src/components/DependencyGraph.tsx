@@ -60,10 +60,10 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     if (simEdges.some(e => !e.source || !e.target)) return;
 
     const iterations = 300;
-    const repulsionStrength = -100000;
-    const attractionStrength = 0.03;
-    const idealEdgeLength = 400;
-    const centerGravity = 0.01;
+    const repulsionStrength = -90000;
+    const attractionStrength = 0.06; // Increased attraction
+    const idealEdgeLength = 300; // Reduced length for tighter clusters
+    const centerGravity = 0.02;
 
     for (let k = 0; k < iterations; k++) {
         for (let i = 0; i < newNodes.length; i++) {
@@ -130,7 +130,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
       x: Math.random() * VIEWBOX_WIDTH * 0.6 + VIEWBOX_WIDTH * 0.2,
       y: Math.random() * VIEWBOX_HEIGHT* 0.6 + VIEWBOX_HEIGHT * 0.2,
       vx: 0, vy: 0,
-      fx: null, fy: null, // Ensure nodes are not fixed on reset
+      fx: null, fy: null,
     }));
 
     const nodeMap = new Map(initialNodes.map(n => [n.id, n]));
@@ -176,14 +176,19 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     
     setNodes(prevNodes => prevNodes.map(n => 
         n.id === draggingNode.id 
-        ? { ...n, fx: x, fy: y, x: x, y: y } // Update position and fix it
+        ? { ...n, fx: x, fy: y, x: x, y: y }
         : n
     ));
   }, [draggingNode]);
 
   const handleMouseUp = useCallback(() => {
-    setDraggingNode(null);
-  }, []);
+    if (draggingNode) {
+        setNodes(prevNodes => prevNodes.map(n => 
+            n.id === draggingNode.id ? { ...n, fx: n.x, fy: n.y } : n
+        ));
+        setDraggingNode(null);
+    }
+  }, [draggingNode]);
 
   useEffect(() => {
     const svgElement = svgRef.current;
@@ -218,7 +223,6 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
   const getShortName = (id: string) => {
     const parts = id.split('/');
     const name = parts.pop() || id;
-    // Remove common extensions for display
     return name.replace(/\.(ts|js)x?$/, '');
   };
 
@@ -236,10 +240,10 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
         </div>
         <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}>
           <defs>
-            <marker id="arrowhead" viewBox="-0 -5 10 10" refX="8" refY="0" markerWidth="6" markerHeight="6" orient="auto">
+            <marker id="arrowhead" viewBox="-0 -5 10 10" refX="7" refY="0" markerWidth="5" markerHeight="5" orient="auto">
               <path d="M0,-5L10,0L0,5" fill="hsl(var(--border))" opacity="0.6" />
             </marker>
-            <marker id="arrowhead-highlight" viewBox="-0 -5 10 10" refX="8" refY="0" markerWidth="6" markerHeight="6" orient="auto">
+            <marker id="arrowhead-highlight" viewBox="-0 -5 10 10" refX="7" refY="0" markerWidth="5" markerHeight="5" orient="auto">
               <path d="M0,-5L10,0L0,5" fill="hsl(var(--primary))" opacity="1" />
             </marker>
             <radialGradient id="node-gradient" cx="30%" cy="30%" r="70%" fx="30%" fy="30%">
@@ -259,7 +263,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
             {edges.map((edge, i) => {
               const edgeId = `${edge.source.id}->${edge.target.id}`;
               const isHighlighted = highlightedEdges.has(edgeId);
-              const opacity = highlightedNodeId ? (isHighlighted ? 0.9 : 0.1) : 0.6;
+              const opacity = highlightedNodeId ? (isHighlighted ? 1 : 0.1) : 0.6;
               
               const dx = edge.target.x - edge.source.x;
               const dy = edge.target.y - edge.source.y;
@@ -269,8 +273,8 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
 
               const x1 = edge.source.x + (dx / dist) * NODE_RADIUS;
               const y1 = edge.source.y + (dy / dist) * NODE_RADIUS;
-              const x2 = edge.target.x - (dx / dist) * (NODE_RADIUS + 2); // +2 to avoid arrowhead overlap
-              const y2 = edge.target.y - (dy / dist) * (NODE_RADIUS + 2);
+              const x2 = edge.target.x - (dx / dist) * (NODE_RADIUS + 5);
+              const y2 = edge.target.y - (dy / dist) * (NODE_RADIUS + 5);
 
               return (
                 <line
@@ -278,7 +282,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                   x1={x1} y1={y1}
                   x2={x2} y2={y2}
                   stroke={isHighlighted ? "hsl(var(--primary))" : "hsl(var(--border))"}
-                  strokeWidth={isHighlighted ? 1.5 / zoom : 1 / zoom}
+                  strokeWidth={isHighlighted ? 2 / zoom : 0.75 / zoom}
                   style={{ opacity, transition: 'all 0.3s' }}
                   markerEnd={isHighlighted ? "url(#arrowhead-highlight)" : "url(#arrowhead)"}
                 />
@@ -287,7 +291,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
             {nodes.map(node => {
               const isPrimary = node.id === highlightedNodeId;
               const isNeighbor = highlightedNodes.has(node.id) && !isPrimary;
-              const opacity = highlightedNodeId ? (isPrimary || isNeighbor ? 1 : 0.25) : 1;
+              const opacity = highlightedNodeId ? (isPrimary || isNeighbor ? 1 : 0.3) : 1;
               const shortName = getShortName(node.id);
               
               const textLines = shortName.length > 10 
@@ -308,7 +312,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                     r={NODE_RADIUS}
                     fill={isPrimary ? "url(#node-gradient-primary)" : "url(#node-gradient)"}
                     stroke={isPrimary ? 'hsl(var(--primary))' : isNeighbor ? 'hsl(var(--accent))' : 'hsl(var(--border))'}
-                    strokeWidth={isPrimary ? 2 / zoom : 1.5 / zoom}
+                    strokeWidth={isPrimary ? 2.5 / zoom : 1.5 / zoom}
                     className="transition-colors"
                     filter="url(#shadow)"
                   />
