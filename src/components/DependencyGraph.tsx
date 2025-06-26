@@ -32,6 +32,33 @@ interface DependencyGraphProps {
   onNodeClick: (nodeId: string | null) => void;
 }
 
+const getEdgeEndpoints = (source: Node, target: Node) => {
+  const w = NODE_WIDTH / 2;
+  const h = NODE_HEIGHT / 2;
+
+  const calculateIntersection = (from: Node, to: Node) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    
+    if (dx === 0 && dy === 0) return { x: to.x, y: to.y };
+
+    if (Math.abs(dy * w) > Math.abs(dx * h)) {
+      // Steeper slope, intersects with top/bottom
+      const t = h / Math.abs(dy);
+      return { x: to.x - dx * t, y: to.y - dy * t };
+    } else {
+      // Flatter slope, intersects with left/right
+      const t = w / Math.abs(dx);
+      return { x: to.x - dx * t, y: to.y - dy * t };
+    }
+  };
+
+  const sourcePoint = calculateIntersection(target, source);
+  const targetPoint = calculateIntersection(source, target);
+
+  return { sourcePoint, targetPoint };
+}
+
 
 export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, highlightedNodeId, onNodeClick }) => {
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -218,10 +245,10 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
         </div>
         <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}>
           <defs>
-            <marker id="arrowhead" viewBox="-0 -5 10 10" refX="13" refY="0" markerWidth="8" markerHeight="8" orient="auto">
+            <marker id="arrowhead" viewBox="-0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto">
               <path d="M0,-5L10,0L0,5" fill="hsl(var(--border))" opacity="0.6" />
             </marker>
-            <marker id="arrowhead-highlight" viewBox="-0 -5 10 10" refX="13" refY="0" markerWidth="8" markerHeight="8" orient="auto">
+            <marker id="arrowhead-highlight" viewBox="-0 -5 10 10" refX="10" refY="0" markerWidth="6" markerHeight="6" orient="auto">
               <path d="M0,-5L10,0L0,5" fill="hsl(var(--primary))" opacity="1" />
             </marker>
             <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -234,11 +261,13 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
               const edgeId = `${edge.source.id}->${edge.target.id}`;
               const isHighlighted = highlightedEdges.has(edgeId);
               const opacity = highlightedNodeId ? (isHighlighted ? 0.9 : 0.15) : 0.6;
+              const { sourcePoint, targetPoint } = getEdgeEndpoints(edge.source, edge.target);
+
               return (
                 <line
                   key={i}
-                  x1={edge.source.x} y1={edge.source.y}
-                  x2={edge.target.x} y2={edge.target.y}
+                  x1={sourcePoint.x} y1={sourcePoint.y}
+                  x2={targetPoint.x} y2={targetPoint.y}
                   stroke="hsl(var(--border))"
                   strokeWidth={isHighlighted ? 1.5 / zoom : 0.8 / zoom}
                   style={{ opacity, transition: 'opacity 0.3s' }}
