@@ -13,11 +13,13 @@ import { FileText, Wand2, MessageSquareText, MessageSquarePlus, GitCompareArrows
 import { explainCodeSegmentAction } from '@/lib/actions';
 import type { ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
 import { useChatContext } from '@/contexts/ChatContext';
+import { cn } from '@/lib/utils';
 
 interface CodeDisplayProps {
   code: string;
   fileName?: string;
   onSegmentSelect?: (segment: string | null) => void;
+  highlightedLines?: { start: number; end: number } | null;
 }
 
 const tokenizeCode = (code: string): string[] => {
@@ -96,8 +98,9 @@ const extractFunctionNameFromLine = (line: string): string | null => {
 };
 
 
-export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegmentSelect }) => {
+export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegmentSelect, highlightedLines }) => {
   const codeDisplayRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const lines = code.split('\n');
   const { focusChatInput } = useChatContext();
 
@@ -108,6 +111,17 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   const [showExplanationDialog, setShowExplanationDialog] = useState(false);
   const [currentDialogTitle, setCurrentDialogTitle] = useState<string>("코드 설명");
   const [currentSegmentForDialogExplanation, setCurrentSegmentForDialogExplanation] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    if (highlightedLines && scrollAreaRef.current) {
+        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        const lineElement = viewport?.querySelector(`[data-line-number="${highlightedLines.start}"]`);
+        if (lineElement) {
+            lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+  }, [highlightedLines]);
 
 
   const handleMouseUp = () => {
@@ -244,13 +258,19 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden p-0">
-        <ScrollArea className="h-full p-4">
+        <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
           <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words bg-background rounded-md relative">
             {lines.map((line, lineIndex) => {
               const lineTokens = tokenizeCode(line);
               const functionName = extractFunctionNameFromLine(line);
+              const isHighlighted = highlightedLines ? lineIndex + 1 >= highlightedLines.start && lineIndex + 1 <= highlightedLines.end : false;
+
               return (
-                <div key={lineIndex} className="flex items-start py-0.5">
+                <div 
+                  key={lineIndex} 
+                  className={cn("flex items-start py-0.5 transition-colors duration-300", isHighlighted && "bg-primary/10 rounded-md")}
+                  data-line-number={lineIndex + 1}
+                >
                   <div className="line-prefix w-12 flex-shrink-0 text-right pr-2 text-muted-foreground text-xs select-none pt-[1px]">
                     {lineIndex + 1}
                   </div>

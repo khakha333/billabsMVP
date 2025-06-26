@@ -10,6 +10,8 @@ import { chatWithApiContext, type ChatWithApiContextInput, type ChatWithApiConte
 import { analyzeGithubRepository, type AnalyzeGithubRepositoryInput, type AnalyzeGithubRepositoryOutput } from '@/ai/flows/analyze-github-repo-flow';
 import { analyzeDependencies, type AnalyzeDependenciesInput, type AnalyzeDependenciesOutput } from '@/ai/flows/analyze-dependencies-flow';
 import { summarizeProject, type SummarizeProjectInput, type SummarizeProjectOutput } from '@/ai/flows/summarize-project-flow';
+import { reviewCode, type ReviewCodeInput, type ReviewCodeOutput } from '@/ai/flows/review-code-flow';
+
 
 import { z } from 'zod';
 
@@ -185,5 +187,22 @@ export async function summarizeProjectAction(input: SummarizeProjectInput): Prom
             throw new Error(`프로젝트 요약 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}`);
         }
         throw new Error("프로젝트 요약 중 내부 오류가 발생했습니다.");
+    }
+}
+
+export async function reviewCodeAction(input: ReviewCodeInput): Promise<ReviewCodeOutput> {
+    const ReviewCodeInputSchemaValidation = z.object({
+      code: z.string(),
+      fileName: z.string().optional(),
+    });
+    try {
+        const validatedInput = ReviewCodeInputSchemaValidation.parse(input);
+        return await reviewCode(validatedInput);
+    } catch (error) {
+        console.error("Error in reviewCodeAction:", error);
+        if (error instanceof z.ZodError) {
+            throw new Error(`코드 리뷰 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}`);
+        }
+        throw new Error("코드 리뷰 중 내부 오류가 발생했습니다.");
     }
 }
