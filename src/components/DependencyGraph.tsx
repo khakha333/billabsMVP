@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -61,8 +62,8 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     const iterations = 300;
     const repulsionStrength = -4000;
     const attractionStrength = 0.2;
-    const idealEdgeLength = 300; // Increased for more space
-    const centerGravity = 0.02; // Reduced for less aggressive centering
+    const idealEdgeLength = 300;
+    const centerGravity = 0.02;
 
     for (let k = 0; k < iterations; k++) {
         for (let i = 0; i < newNodes.length; i++) {
