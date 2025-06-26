@@ -74,16 +74,14 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     const root: Omit<Directory, 'path' | 'x' | 'y' | 'width' | 'height'> = { children: [], files: [], subdirectories: [] };
     const nodeMap = new Map<string, Node>();
 
-    // Build directory tree
     const dirMap = new Map<string, Directory>();
     data.nodes.forEach(node => {
       const pathSegments = node.id.split('/');
-      const fileName = pathSegments.pop()!;
+      pathSegments.pop(); // remove filename
       let currentPath = '';
       let parentDir: Directory | Omit<Directory, 'path' | 'x' | 'y' | 'width' | 'height'> = root;
 
       pathSegments.forEach(segment => {
-        const prevPath = currentPath;
         currentPath = currentPath ? `${currentPath}/${segment}` : segment;
         if (!dirMap.has(currentPath)) {
           const newDir: Directory = {
@@ -103,58 +101,55 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
       parentDir.files.push(newNode);
     });
 
-    // Calculate layout recursively
-    const positionItem = (item: Directory | Node, currentY: number): { width: number, height: number } => {
-      if ('path' in item) { // It's a Directory
-        let contentWidth = 0;
-        let contentHeight = 0;
-        let yOffset = DIR_HEADER_HEIGHT;
-        let xOffset = PADDING;
-        let maxChildWidth = 0;
-
-        item.subdirectories.forEach(sub => {
-            const { width, height } = positionItem(sub, yOffset);
-            sub.x = xOffset;
-            sub.y = yOffset;
-            contentHeight = Math.max(contentHeight, yOffset + height);
-            maxChildWidth = Math.max(maxChildWidth, width);
-        });
-
-        if(item.subdirectories.length > 0) {
-            contentWidth = PADDING + maxChildWidth + PADDING;
-            contentHeight += PADDING;
-            yOffset = contentHeight;
+    const positionItem = (item: Directory | Node): { width: number; height: number } => {
+        if ('path' in item) { // It's a Directory
+            let subdirectoriesTotalWidth = item.subdirectories.length > 0 ? (item.subdirectories.length - 1) * PADDING : 0;
+            let maxSubdirectoryHeight = 0;
+            item.subdirectories.forEach(sub => {
+                const dim = positionItem(sub);
+                subdirectoriesTotalWidth += dim.width;
+                maxSubdirectoryHeight = Math.max(maxSubdirectoryHeight, dim.height);
+            });
+    
+            const FILES_PER_ROW = 2;
+            const fileRows = Math.ceil(item.files.length / FILES_PER_ROW);
+            const fileGridWidth = item.files.length > 0 ? Math.min(item.files.length, FILES_PER_ROW) * (NODE_WIDTH + NODE_MARGIN_X) - NODE_MARGIN_X : 0;
+            const fileGridHeight = item.files.length > 0 ? fileRows * (NODE_HEIGHT + NODE_MARGIN_Y) - NODE_MARGIN_Y : 0;
+    
+            item.width = Math.max(subdirectoriesTotalWidth, fileGridWidth) + 2 * PADDING;
+            const subdirectoriesY = DIR_HEADER_HEIGHT;
+            const filesY = subdirectoriesY + (item.subdirectories.length > 0 ? maxSubdirectoryHeight + PADDING : 0);
+            item.height = filesY + fileGridHeight + (item.files.length > 0 ? PADDING : 0);
+    
+            // Position children
+            let currentSubdirX = PADDING;
+            item.subdirectories.forEach(sub => {
+                sub.x = currentSubdirX;
+                sub.y = subdirectoriesY;
+                currentSubdirX += sub.width + PADDING;
+            });
+    
+            item.files.forEach((file, i) => {
+                const row = Math.floor(i / FILES_PER_ROW);
+                const col = i % FILES_PER_ROW;
+                file.x = PADDING + col * (NODE_WIDTH + NODE_MARGIN_X);
+                file.y = filesY + row * (NODE_HEIGHT + NODE_MARGIN_Y);
+            });
+    
+            return { width: item.width, height: item.height };
+        } else { // It's a Node
+            return { width: NODE_WIDTH, height: NODE_HEIGHT };
         }
-
-        item.files.forEach((file, i) => {
-            positionItem(file, 0); // width/height are static for files
-            file.x = xOffset;
-            file.y = yOffset;
-            yOffset += NODE_HEIGHT + NODE_MARGIN_Y;
-        });
-        
-        const filesWidth = item.files.length > 0 ? NODE_WIDTH + 2 * PADDING : 0;
-        const filesHeight = item.files.length > 0 ? (yOffset - (item.subdirectories.length > 0 ? contentHeight : DIR_HEADER_HEIGHT)) - NODE_MARGIN_Y + PADDING : 0;
-        
-        item.width = Math.max(contentWidth, filesWidth);
-        item.height = (item.subdirectories.length > 0 ? contentHeight - DIR_HEADER_HEIGHT : 0) + filesHeight + DIR_HEADER_HEIGHT;
-        
-        return { width: item.width, height: item.height };
-      } else { // It's a Node
-        return { width: NODE_WIDTH, height: NODE_HEIGHT };
-      }
     };
     
-    // Position top-level directories
     let currentX = PADDING;
     root.subdirectories.forEach(dir => {
         dir.x = currentX;
         dir.y = PADDING;
-        positionItem(dir, PADDING);
-        currentX += dir.width + PADDING;
+        const { width } = positionItem(dir);
+        currentX += width + PADDING;
     });
 
-    // Calculate absolute positions
     const setAbsolutePositions = (item: Directory | Node, parentX: number, parentY: number) => {
         item.x += parentX;
         item.y += parentY;
@@ -290,48 +285,43 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
             </defs>
           <rect width={layout.viewBox.width} height={layout.viewBox.height} fill="transparent" onClick={() => onNodeClick(null)} />
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-            {graphData.edges.map(edge => {
-                const sourceNode = layout.nodes.get(edge.source);
-                const targetNode = layout.nodes.get(edge.target);
-                if (!sourceNode || !targetNode) return null;
+            {/* Edge Rendering */}
+            <g>
+                {graphData.edges.map(edge => {
+                    const sourceNode = layout.nodes.get(edge.source);
+                    const targetNode = layout.nodes.get(edge.target);
+                    if (!sourceNode || !targetNode) return null;
 
-                const edgeId = `${edge.source}->${edge.target}`;
-                const isHighlighted = highlightedEdges.has(edgeId);
-                const opacity = highlightedNodeId ? (isHighlighted ? 1 : 0.1) : 0.6;
+                    const edgeId = `${edge.source}->${edge.target}`;
+                    const isHighlighted = highlightedEdges.has(edgeId);
+                    const opacity = highlightedNodeId ? (isHighlighted ? 0.9 : 0.1) : 0.4;
+                    
+                    const p1 = {
+                        x: sourceNode.x + sourceNode.width,
+                        y: sourceNode.y + sourceNode.height / 2
+                    };
+                    const p2 = {
+                        x: targetNode.x,
+                        y: targetNode.y + targetNode.height / 2
+                    };
 
-                const sourceX = sourceNode.x + sourceNode.width / 2;
-                const sourceY = sourceNode.y + sourceNode.height / 2;
-                const targetX = targetNode.x + targetNode.width / 2;
-                const targetY = targetNode.y + targetNode.height / 2;
-                
-                const dx = targetX - sourceX;
-                const dy = targetY - sourceY;
-                const angle = Math.atan2(dy, dx);
-                
-                const p1 = {
-                    x: sourceNode.x + sourceNode.width,
-                    y: sourceY
-                };
-                const p2 = {
-                    x: targetNode.x,
-                    y: targetY
-                };
+                    const pathData = `M ${p1.x} ${p1.y} C ${p1.x + 60} ${p1.y}, ${p2.x - 60} ${p2.y}, ${p2.x} ${p2.y}`;
 
-                const midX = p1.x + 40 * Math.cos(Math.PI/2);
-                const midY = (p1.y + p2.y) / 2;
-                
-                return (
-                    <path
-                        key={edgeId}
-                        d={`M ${p1.x} ${p1.y} C ${midX} ${p1.y}, ${midX} ${p2.y}, ${p2.x} ${p2.y}`}
-                        stroke={isHighlighted ? "hsl(var(--primary))" : "hsl(var(--border))"}
-                        strokeWidth={isHighlighted ? 1.5 : 0.8}
-                        fill="none"
-                        style={{ opacity, transition: 'all 0.2s' }}
-                        markerEnd={isHighlighted ? "url(#arrowhead-highlight)" : "url(#arrowhead)"}
-                    />
-                );
-            })}
+                    return (
+                        <path
+                            key={edgeId}
+                            d={pathData}
+                            stroke={isHighlighted ? "hsl(var(--primary))" : "hsl(var(--border))"}
+                            strokeWidth={isHighlighted ? 1.5 : 1}
+                            fill="none"
+                            style={{ opacity, transition: 'opacity 0.2s' }}
+                            markerEnd={isHighlighted ? "url(#arrowhead-highlight)" : "url(#arrowhead)"}
+                        />
+                    );
+                })}
+            </g>
+
+            {/* Directory Rendering */}
             {layout.directories.map(renderDirectory)}
           </g>
         </svg>
