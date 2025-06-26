@@ -59,19 +59,22 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     if (simEdges.some(e => !e.source || !e.target)) return;
 
     const iterations = 300;
-    const repulsionStrength = -6000;
+    const repulsionStrength = -4000;
     const attractionStrength = 0.2;
-    const idealEdgeLength = 250;
-    const centerGravity = 0.05;
+    const idealEdgeLength = 300; // Increased for more space
+    const centerGravity = 0.02; // Reduced for less aggressive centering
 
     for (let k = 0; k < iterations; k++) {
         for (let i = 0; i < newNodes.length; i++) {
             const ni = newNodes[i];
             if (k === 0) { ni.vx = 0; ni.vy = 0; }
-            const dxToCenter = VIEWBOX_WIDTH / 2 - ni.x;
-            const dyToCenter = VIEWBOX_HEIGHT / 2 - ni.y;
-            ni.vx += dxToCenter * centerGravity * 0.01;
-            ni.vy += dyToCenter * centerGravity * 0.01;
+            if (ni.fx == null) {
+              const dxToCenter = VIEWBOX_WIDTH / 2 - ni.x;
+              const dyToCenter = VIEWBOX_HEIGHT / 2 - ni.y;
+              ni.vx += dxToCenter * centerGravity * 0.01;
+              ni.vy += dyToCenter * centerGravity * 0.01;
+            }
+
 
             for (let j = i + 1; j < newNodes.length; j++) {
                 const nj = newNodes[j];
@@ -82,8 +85,12 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                 const force = repulsionStrength / distSq;
                 const forceX = (dx / Math.sqrt(distSq)) * force;
                 const forceY = (dy / Math.sqrt(distSq)) * force;
-                ni.vx += forceX; ni.vy += forceY;
-                nj.vx -= forceX; nj.vy -= forceY;
+                if(ni.fx == null) {
+                  ni.vx += forceX; ni.vy += forceY;
+                }
+                if(nj.fx == null) {
+                  nj.vx -= forceX; nj.vy -= forceY;
+                }
             }
         }
         
@@ -95,8 +102,12 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
             const displacement = dist - idealEdgeLength;
             const force = attractionStrength * displacement * 0.1;
             const forceX = (dx / dist) * force; const forceY = (dy / dist) * force;
-            source.vx += forceX; source.vy += forceY;
-            target.vx -= forceX; target.vy -= forceY;
+            if(source.fx == null) {
+              source.vx += forceX; source.vy += forceY;
+            }
+            if(target.fx == null) {
+              target.vx -= forceX; target.vy -= forceY;
+            }
         });
 
         newNodes.forEach((node: Node) => {
@@ -118,6 +129,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
       x: Math.random() * VIEWBOX_WIDTH * 0.6 + VIEWBOX_WIDTH * 0.2,
       y: Math.random() * VIEWBOX_HEIGHT* 0.6 + VIEWBOX_HEIGHT * 0.2,
       vx: 0, vy: 0,
+      fx: null, fy: null, // Ensure nodes are not fixed on reset
     }));
 
     const nodeMap = new Map(initialNodes.map(n => [n.id, n]));
@@ -160,23 +172,32 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     svgPoint.x = e.clientX;
     svgPoint.y = e.clientY;
     const { x, y } = svgPoint.matrixTransform(CTM.inverse());
-    setNodes(prevNodes => prevNodes.map(n => n.id === draggingNode.id ? { ...n, fx: x, fy: y, x, y } : n));
+    
+    setNodes(prevNodes => prevNodes.map(n => 
+        n.id === draggingNode.id 
+        ? { ...n, fx: x, fy: y, x: x, y: y } // Update position and fix it
+        : n
+    ));
   }, [draggingNode]);
 
   const handleMouseUp = useCallback(() => {
-    if (!draggingNode) return;
-    const unpinnedNodes = nodes.map(n => n.id === draggingNode.id ? { ...n, fx: null, fy: null } : n);
+    // When the mouse is released, we keep the node's position fixed (fx, fy).
+    // The simulation respects fx/fy, so it will stay put.
+    // We remove the dragging state. No re-simulation is needed.
     setDraggingNode(null);
-    runSimulation(unpinnedNodes, edges);
-  }, [draggingNode, nodes, edges, runSimulation]);
+  }, []);
 
   useEffect(() => {
     const svgElement = svgRef.current;
     if (!draggingNode || !svgElement) return;
+
     const onMove = (e: MouseEvent) => handleMouseMove(e);
+    // Use a window listener for mouseup to catch releases outside the SVG
     const onUp = () => handleMouseUp();
+
     svgElement.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp, { once: true });
+    window.addEventListener('mouseup', onUp);
+
     return () => {
       svgElement.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
