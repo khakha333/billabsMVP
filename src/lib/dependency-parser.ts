@@ -1,6 +1,7 @@
 
 export interface GraphNode {
   id: string; // file path
+  category: 'component' | 'hook' | 'route' | 'utility' | 'other';
 }
 
 export interface GraphEdge {
@@ -37,9 +38,21 @@ function resolveImportPath(basePath: string, relativePath: string): string {
     return resolvedSegments.join('/');
 }
 
+function getNodeCategory(path: string): GraphNode['category'] {
+    const lowerPath = path.toLowerCase();
+    if (lowerPath.includes('/components/')) return 'component';
+    if (lowerPath.includes('/hooks/') || lowerPath.includes('/queries/')) return 'hook';
+    if (lowerPath.includes('/pages/') || lowerPath.includes('/app/') || lowerPath.includes('/routes/')) return 'route';
+    if (lowerPath.includes('/lib/') || lowerPath.includes('/utils/') || lowerPath.includes('/helpers/')) return 'utility';
+    return 'other';
+}
+
 
 export function parseDependencies(fileMap: Map<string, string>): DependencyGraphData {
-  const nodes: GraphNode[] = Array.from(fileMap.keys()).map(p => ({ id: p }));
+  const nodes: GraphNode[] = Array.from(fileMap.keys()).map(p => ({ 
+      id: p,
+      category: getNodeCategory(p),
+  }));
   const edges: GraphEdge[] = [];
   const filePaths = new Set(fileMap.keys());
 
