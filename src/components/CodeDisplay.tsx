@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription as DialogDesc, DialogClose } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, Wand2, MessageSquareText, MessageSquarePlus } from 'lucide-react';
+import { FileText, Wand2, MessageSquareText, MessageSquarePlus, GitCompareArrows } from 'lucide-react';
 import { explainCodeSegmentAction } from '@/lib/actions';
 import type { ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
 import { useChatContext } from '@/contexts/ChatContext';
@@ -17,6 +17,7 @@ import { useChatContext } from '@/contexts/ChatContext';
 interface CodeDisplayProps {
   code: string;
   fileName?: string;
+  onSegmentSelect?: (segment: string | null) => void;
 }
 
 const tokenizeCode = (code: string): string[] => {
@@ -95,7 +96,7 @@ const extractFunctionNameFromLine = (line: string): string | null => {
 };
 
 
-export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName }) => {
+export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegmentSelect }) => {
   const codeDisplayRef = useRef<HTMLDivElement>(null);
   const lines = code.split('\n');
   const { focusChatInput } = useChatContext();
@@ -179,6 +180,13 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName }) => {
       focusChatInput(`이 코드 조각에 대해 좀 더 자세히 설명해주세요:\n\`\`\`\n${currentSegmentForDialogExplanation}\n\`\`\``);
       setShowExplanationDialog(false);
     }
+  };
+
+  const handleAnalyzeImpactOnGraph = () => {
+    if (onSegmentSelect && currentSegmentForDialogExplanation) {
+      onSegmentSelect(currentSegmentForDialogExplanation);
+    }
+    setShowExplanationDialog(false);
   };
 
 
@@ -288,6 +296,9 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName }) => {
           setShowExplanationDialog(isOpen);
           if (!isOpen) {
              setSelectionRect(null);
+             if (onSegmentSelect) {
+                onSegmentSelect(null);
+             }
           }
         }}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
@@ -322,7 +333,13 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName }) => {
               </div>
             )}
           </div>
-          <div className="flex flex-col sm:flex-row gap-2 mt-4">
+          <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-4 border-t">
+            {onSegmentSelect && (
+              <Button type="button" variant="outline" onClick={handleAnalyzeImpactOnGraph} className="flex-1">
+                <GitCompareArrows className="mr-2 h-4 w-4" />
+                그래프에서 영향 분석
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={handleAskInChatFromDialog} className="flex-1">
               <MessageSquarePlus className="mr-2 h-4 w-4" />
               채팅으로 질문하기

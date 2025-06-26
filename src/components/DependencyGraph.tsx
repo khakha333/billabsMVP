@@ -29,6 +29,7 @@ interface DependencyGraphProps {
   graphData: DependencyGraphData | null;
   highlightedNodeId: string | null;
   onNodeClick: (nodeId: string | null) => void;
+  highlightedNeighbors?: Set<string> | null;
 }
 
 const PADDING = 20;
@@ -54,7 +55,7 @@ const DARK_CATEGORY_COLORS: { [key: string]: { bg: string; text: string } } = {
 };
 
 
-export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, highlightedNodeId, onNodeClick }) => {
+export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, highlightedNodeId, onNodeClick, highlightedNeighbors }) => {
   const [layout, setLayout] = useState<{ directories: Directory[], nodes: Map<string, Node>, viewBox: {width: number, height: number} } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -111,7 +112,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                 maxSubdirectoryHeight = Math.max(maxSubdirectoryHeight, dim.height);
             });
     
-            const FILES_PER_ROW = 2;
+            const FILES_PER_ROW = Math.max(1, Math.floor((subdirectoriesTotalWidth || 300) / (NODE_WIDTH + NODE_MARGIN_X)));
             const fileRows = Math.ceil(item.files.length / FILES_PER_ROW);
             const fileGridWidth = item.files.length > 0 ? Math.min(item.files.length, FILES_PER_ROW) * (NODE_WIDTH + NODE_MARGIN_X) - NODE_MARGIN_X : 0;
             const fileGridHeight = item.files.length > 0 ? fileRows * (NODE_HEIGHT + NODE_MARGIN_Y) - NODE_MARGIN_Y : 0;
@@ -174,19 +175,37 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     }
   }, [graphData, calculateLayout]);
 
-  const { highlightedNodes, highlightedEdges } = useMemo(() => {
+  const { visibleNodes, visibleEdges } = useMemo(() => {
     if (!highlightedNodeId || !graphData) {
-      return { highlightedNodes: new Set<string>(), highlightedEdges: new Set<string>() };
+      return { visibleNodes: new Set<string>(), visibleEdges: new Set<string>() };
     }
     const nodes = new Set<string>([highlightedNodeId]);
     const edgesSet = new Set<string>();
+
+    const neighborsToHighlight = highlightedNeighbors ?? new Set(
+        graphData.edges
+            .filter(edge => edge.source === highlightedNodeId || edge.target === highlightedNodeId)
+            .map(edge => edge.source === highlightedNodeId ? edge.target : edge.source)
+    );
+
+    neighborsToHighlight.forEach(neighbor => nodes.add(neighbor));
+    
     graphData.edges.forEach(edge => {
       const edgeId = `${edge.source}->${edge.target}`;
-      if (edge.source === highlightedNodeId) { nodes.add(edge.target); edgesSet.add(edgeId); }
-      if (edge.target === highlightedNodeId) { nodes.add(edge.source); edgesSet.add(edgeId); }
+      if (
+        (nodes.has(edge.source) && nodes.has(edge.target)) && // Both nodes must be visible
+        (
+            (edge.source === highlightedNodeId && neighborsToHighlight.has(edge.target)) || 
+            (edge.target === highlightedNodeId && neighborsToHighlight.has(edge.source)) ||
+            (highlightedNeighbors && highlightedNeighbors.has(edge.source) && highlightedNeighbors.has(edge.target))
+        )
+      ) {
+         edgesSet.add(edgeId);
+      }
     });
-    return { highlightedNodes: nodes, highlightedEdges: edgesSet };
-  }, [highlightedNodeId, graphData]);
+
+    return { visibleNodes: nodes, visibleEdges: edgesSet };
+  }, [highlightedNodeId, highlightedNeighbors, graphData]);
 
   const renderDirectory = (dir: Directory) => (
     <React.Fragment key={dir.path}>
@@ -213,8 +232,8 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
 
   const renderNode = (node: Node) => {
     const isPrimary = node.id === highlightedNodeId;
-    const isNeighbor = highlightedNodes.has(node.id) && !isPrimary;
-    const opacity = highlightedNodeId ? (isPrimary || isNeighbor ? 1 : 0.4) : 1;
+    const isNeighbor = highlightedNeighbors ? highlightedNeighbors.has(node.id) : visibleNodes.has(node.id);
+    const opacity = highlightedNodeId ? (isPrimary || isNeighbor ? 1 : 0.2) : 1;
     const color = colors[node.category] || colors['other'];
     const shortName = node.id.split('/').pop() || '';
     
@@ -293,7 +312,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                     if (!sourceNode || !targetNode) return null;
 
                     const edgeId = `${edge.source}->${edge.target}`;
-                    const isHighlighted = highlightedEdges.has(edgeId);
+                    const isHighlighted = visibleEdges.has(edgeId);
                     const opacity = highlightedNodeId ? (isHighlighted ? 0.9 : 0.1) : 0.4;
                     
                     const p1 = {
@@ -304,8 +323,13 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                         x: targetNode.x,
                         y: targetNode.y + targetNode.height / 2
                     };
-
-                    const pathData = `M ${p1.x} ${p1.y} C ${p1.x + 60} ${p1.y}, ${p2.x - 60} ${p2.y}, ${p2.x} ${p2.y}`;
+                    
+                    const controlPointX1 = p1.x + 60;
+                    const controlPointY1 = p1.y;
+                    const controlPointX2 = p2.x - 60;
+                    const controlPointY2 = p2.y;
+                    
+                    const pathData = `M ${p1.x} ${p1.y} C ${controlPointX1} ${controlPointY1}, ${controlPointX2} ${controlPointY2}, ${p2.x} ${p2.y}`;
 
                     return (
                         <path

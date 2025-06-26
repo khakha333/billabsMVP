@@ -38,6 +38,8 @@ export default function ProjectHelperPage() {
   const [dependencyGraphData, setDependencyGraphData] = useState<DependencyGraphData | null>(null);
   const [impactFile, setImpactFile] = useState<string>('');
   const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
+  const [selectedSegment, setSelectedSegment] = useState<string | null>(null);
+
 
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -247,18 +249,38 @@ export default function ProjectHelperPage() {
       setHighlightedNode(nodeId);
       setSelectedFile(nodeId);
       setImpactFile(nodeId || '');
+      setSelectedSegment(null); // Reset segment when file changes
   };
 
-  const { dependencies: impactDependencies, dependents: impactDependents } = useMemo(() => {
+  const detailedImpactAnalysis = useMemo(() => {
     if (!dependencyGraphData || !impactFile) return { dependencies: [], dependents: [] };
-    const dependencies = dependencyGraphData.edges
-        .filter(edge => edge.source === impactFile)
-        .map(edge => edge.target);
-    const dependents = dependencyGraphData.edges
-        .filter(edge => edge.target === impactFile)
-        .map(edge => edge.source);
-    return { dependencies, dependents };
-  }, [dependencyGraphData, impactFile]);
+
+    // Get all file-level dependencies and dependents first
+    const allRelations = dependencyGraphData.edges.reduce(
+        (acc, edge) => {
+            if (edge.source === impactFile) acc.dependencies.add(edge.target);
+            if (edge.target === impactFile) acc.dependents.add(edge.source);
+            return acc;
+        }, { dependencies: new Set<string>(), dependents: new Set<string>() }
+    );
+    
+    let finalDependents = Array.from(allRelations.dependents);
+
+    // If a specific segment is selected, filter the dependents list
+    if (selectedSegment && fileMap) {
+        finalDependents = finalDependents.filter(depPath => {
+            const content = fileMap.get(depPath);
+            // Simple text search. A more advanced version could use regex or AST.
+            // This is a good starting point.
+            return content && content.includes(selectedSegment);
+        });
+    }
+
+    return { 
+        dependencies: Array.from(allRelations.dependencies), 
+        dependents: finalDependents 
+    };
+  }, [dependencyGraphData, impactFile, selectedSegment, fileMap]);
 
 
   return (
@@ -483,7 +505,7 @@ export default function ProjectHelperPage() {
                   </Card>
                 )}
               </TabsContent>
-              <TabsContent value="impact" className="flex-grow mt-4">
+              <TabsContent value="impact" className="flex-grow mt-4 flex flex-col">
                 <div className="flex flex-col gap-6 h-full">
                     <Card>
                         <CardHeader>
@@ -492,11 +514,11 @@ export default function ProjectHelperPage() {
                                 영향 분석
                             </CardTitle>
                             <CardDescription>
-                              파일을 선택하여 코드를 확인하고, 해당 파일의 의존성 및 다른 파일에 미치는 영향을 분석하세요.
+                              파일을 선택하여 코드를 확인하고, 코드의 특정 부분을 선택하여 그래프에서 구체적인 영향을 분석하세요.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Select onValueChange={handleNodeHighlight} value={impactFile} disabled={!fileMap}>
+                            <Select onValueChange={handleNodeHighlight} value={impactFile || ''} disabled={!fileMap}>
                                 <SelectTrigger className="w-full">
                                     <SelectValue placeholder="분석할 파일을 선택하세요..." />
                                 </SelectTrigger>
@@ -510,55 +532,68 @@ export default function ProjectHelperPage() {
                     </Card>
 
                     {impactFile && fileMap ? (
-                       <div className="flex flex-col gap-6">
-                            <div className="min-h-[400px]">
-                                <CodeDisplay 
-                                    code={fileMap.get(impactFile) || ''}
-                                    fileName={impactFile}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-grow">
+                          <div className="flex flex-col gap-4">
+                              <div className="flex-grow min-h-[400px]">
+                                  <CodeDisplay 
+                                      code={fileMap.get(impactFile) || ''}
+                                      fileName={impactFile}
+                                      onSegmentSelect={setSelectedSegment}
+                                  />
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Card>
+                                  <CardHeader>
+                                      <CardTitle className="text-lg flex items-center gap-2">
+                                      <ArrowDownToLine className="h-5 w-5 text-primary" />
+                                      의존성 ({detailedImpactAnalysis.dependencies.length})
+                                      </CardTitle>
+                                      <CardDescription>이 파일이 가져오는 파일</CardDescription>
+                                  </CardHeader>
+                                  <CardContent>
+                                      <ScrollArea className="h-32">
+                                          <ul className="space-y-1 text-sm">
+                                          {detailedImpactAnalysis.dependencies.length > 0 ? (
+                                              detailedImpactAnalysis.dependencies.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
+                                          ) : (
+                                              <li className="text-muted-foreground italic">의존성이 없습니다.</li>
+                                          )}
+                                          </ul>
+                                      </ScrollArea>
+                                  </CardContent>
+                                </Card>
+                                <Card>
+                                  <CardHeader>
+                                      <CardTitle className="text-lg flex items-center gap-2">
+                                        <ArrowUpFromLine className="h-5 w-5 text-primary" />
+                                        영향받는 파일 ({detailedImpactAnalysis.dependents.length})
+                                      </CardTitle>
+                                      <CardDescription>이 파일을 가져오는 파일</CardDescription>
+                                  </CardHeader>
+                                  <CardContent>
+                                      <ScrollArea className="h-32">
+                                          <ul className="space-y-1 text-sm">
+                                          {detailedImpactAnalysis.dependents.length > 0 ? (
+                                              detailedImpactAnalysis.dependents.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
+                                          ) : (
+                                              <li className="text-muted-foreground italic">이 파일을 사용하는 파일이 없습니다.</li>
+                                          )}
+                                          </ul>
+                                      </ScrollArea>
+                                  </CardContent>
+                                </Card>
+                              </div>
+                          </div>
+                          <div className="min-h-[600px]">
+                            {dependencyGraphData && (
+                                <DependencyGraph 
+                                  graphData={dependencyGraphData} 
+                                  highlightedNodeId={impactFile}
+                                  onNodeClick={handleNodeHighlight}
+                                  highlightedNeighbors={new Set([...detailedImpactAnalysis.dependencies, ...detailedImpactAnalysis.dependents])}
                                 />
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg flex items-center gap-2">
-                                    <ArrowDownToLine className="h-5 w-5 text-primary" />
-                                    의존성 (Dependencies)
-                                    </CardTitle>
-                                    <CardDescription>이 파일이 가져오는(import) 파일들입니다.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <ScrollArea className="h-48">
-                                        <ul className="space-y-1 text-sm">
-                                        {impactDependencies.length > 0 ? (
-                                            impactDependencies.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
-                                        ) : (
-                                            <li className="text-muted-foreground italic">의존성이 없습니다.</li>
-                                        )}
-                                        </ul>
-                                    </ScrollArea>
-                                </CardContent>
-                                </Card>
-                                <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg flex items-center gap-2">
-                                    <ArrowUpFromLine className="h-5 w-5 text-primary" />
-                                    영향받는 파일 (Dependents)
-                                    </CardTitle>
-                                    <CardDescription>이 파일을 가져오는(import) 파일들입니다.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <ScrollArea className="h-48">
-                                        <ul className="space-y-1 text-sm">
-                                        {impactDependents.length > 0 ? (
-                                            impactDependents.map(dep => <li key={dep} className='p-1 rounded hover:bg-muted'>{dep}</li>)
-                                        ) : (
-                                            <li className="text-muted-foreground italic">이 파일을 사용하는 파일이 없습니다.</li>
-                                        )}
-                                        </ul>
-                                    </ScrollArea>
-                                </CardContent>
-                                </Card>
-                            </div>
+                            )}
+                          </div>
                         </div>
                     ) : (
                       <Card className="flex-grow flex items-center justify-center min-h-[400px]">
@@ -581,5 +616,3 @@ export default function ProjectHelperPage() {
     </ChatProvider>
   );
 }
-
-    
