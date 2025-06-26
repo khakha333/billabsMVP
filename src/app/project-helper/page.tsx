@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +13,9 @@ import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package,
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
-import { analyzeGithubRepositoryAction, analyzeDependenciesAction } from '@/lib/actions';
+import { analyzeGithubRepositoryAction, analyzeDependenciesAction, summarizeProjectAction } from '@/lib/actions';
 import type { AnalyzeDependenciesOutput } from '@/ai/flows/analyze-dependencies-flow';
+import type { SummarizeProjectOutput } from '@/ai/flows/summarize-project-flow';
 import { FileTreeDisplay } from '@/components/FileTreeDisplay';
 import { CodeDisplay } from '@/components/CodeDisplay';
 import { ChatProvider } from '@/contexts/ChatContext';
@@ -22,6 +23,7 @@ import { ProjectVisualization } from '@/components/ProjectVisualization';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DependencyGraph } from '@/components/DependencyGraph';
 import { parseDependencies, type DependencyGraphData } from '@/lib/dependency-parser';
+import { ProjectSummaryDisplay } from '@/components/ProjectSummaryDisplay';
 
 
 interface TreeNode {
@@ -40,6 +42,9 @@ export default function ProjectHelperPage() {
   const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<string | null>(null);
 
+  const [projectSummary, setProjectSummary] = useState<SummarizeProjectOutput | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [combinedCode, setCombinedCode] = useState<string | null>(null);
 
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +88,7 @@ export default function ProjectHelperPage() {
   }, [fileMap]);
   
   const processAndSetInput = (content: string, source: string) => {
+      setCombinedCode(content); // Store for summary
       const parsedMap = parseProjectInput(content);
       setFileMap(parsedMap);
       handleNodeHighlight(null);
@@ -96,10 +102,31 @@ export default function ProjectHelperPage() {
           description: `${source}에서 코드를 불러왔습니다. 파일 구조와 의존성 그래프가 생성되었습니다.`,
       });
 
+      runProjectSummary(content); // Run AI Summary
+
       const packageJsonContent = parsedMap.get('package.json');
       if (packageJsonContent) {
           runDependencyAnalysis(packageJsonContent);
       }
+  };
+
+  const runProjectSummary = async (code: string) => {
+    setIsSummarizing(true);
+    setProjectSummary(null);
+    try {
+      const result = await summarizeProjectAction({ combinedCode: code });
+      setProjectSummary(result);
+    } catch (error) {
+      console.error("Project summary error:", error);
+      toast({
+        title: "프로젝트 요약 실패",
+        description: "프로젝트 개요를 생성하는 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+      setProjectSummary(null);
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   const runDependencyAnalysis = async (packageJsonContent: string) => {
@@ -139,6 +166,8 @@ export default function ProjectHelperPage() {
     setDependencyGraphData(null);
     handleNodeHighlight(null);
     setDependencyAnalysis(null);
+    setProjectSummary(null);
+    setCombinedCode(null);
     try {
       const result = await analyzeGithubRepositoryAction({ repositoryUrl: githubUrl });
       if (result.error) {
@@ -166,6 +195,8 @@ export default function ProjectHelperPage() {
     handleNodeHighlight(null);
     setDependencyAnalysis(null);
     setDependencyGraphData(null);
+    setProjectSummary(null);
+    setCombinedCode(null);
 
     if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
       const reader = new FileReader();
@@ -359,6 +390,10 @@ export default function ProjectHelperPage() {
                   </div>
               </CardContent>
             </Card>
+
+            {(isSummarizing || projectSummary) && (
+              <ProjectSummaryDisplay summary={projectSummary} isLoading={isSummarizing} />
+            )}
 
             {fileMap && (
                 <Card>

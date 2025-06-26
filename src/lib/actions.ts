@@ -9,6 +9,7 @@ import { generateApiExamples, type GenerateApiExamplesInput, type GenerateApiExa
 import { chatWithApiContext, type ChatWithApiContextInput, type ChatWithApiContextOutput } from '@/ai/flows/chat-with-api-context-flow';
 import { analyzeGithubRepository, type AnalyzeGithubRepositoryInput, type AnalyzeGithubRepositoryOutput } from '@/ai/flows/analyze-github-repo-flow';
 import { analyzeDependencies, type AnalyzeDependenciesInput, type AnalyzeDependenciesOutput } from '@/ai/flows/analyze-dependencies-flow';
+import { summarizeProject, type SummarizeProjectInput, type SummarizeProjectOutput } from '@/ai/flows/summarize-project-flow';
 
 import { z } from 'zod';
 
@@ -168,5 +169,21 @@ export async function analyzeDependenciesAction(input: AnalyzeDependenciesInput)
             throw new Error(`의존성 분석 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}`);
         }
         throw new Error("의존성 분석 중 내부 오류가 발생했습니다.");
+    }
+}
+
+export async function summarizeProjectAction(input: SummarizeProjectInput): Promise<SummarizeProjectOutput> {
+    const SummarizeProjectInputSchemaValidation = z.object({
+      combinedCode: z.string(),
+    });
+    try {
+        const validatedInput = SummarizeProjectInputSchemaValidation.parse(input);
+        return await summarizeProject(validatedInput);
+    } catch (error) {
+        console.error("Error in summarizeProjectAction:", error);
+        if (error instanceof z.ZodError) {
+            throw new Error(`프로젝트 요약 입력이 잘못되었습니다: ${error.errors.map(e => e.message).join(', ')}`);
+        }
+        throw new Error("프로젝트 요약 중 내부 오류가 발생했습니다.");
     }
 }
