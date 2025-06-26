@@ -3,7 +3,7 @@
 import type React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Sparkles, ListChecks, Architecture, Rocket } from 'lucide-react';
+import { Sparkles, ListChecks, Blocks, Rocket } from 'lucide-react';
 import type { SummarizeProjectOutput } from '@/ai/flows/summarize-project-flow';
 
 interface ProjectSummaryDisplayProps {
@@ -76,7 +76,7 @@ export const ProjectSummaryDisplay: React.FC<ProjectSummaryDisplayProps> = ({ su
         
         <div>
           <h3 className="font-semibold mb-2 flex items-center gap-2">
-            <Architecture className="h-5 w-5 text-primary" />
+            <Blocks className="h-5 w-5 text-primary" />
             아키텍처 및 기술 스택
           </h3>
           <p className="text-muted-foreground">{summary.architecture}</p>
