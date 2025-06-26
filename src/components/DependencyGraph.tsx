@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { DependencyGraphData, GraphNode as DepNode } from '@/lib/dependency-parser';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from './ui/button';
@@ -23,14 +23,23 @@ interface Edge {
 
 const VIEWBOX_WIDTH = 1000;
 const VIEWBOX_HEIGHT = 800;
+const NODE_WIDTH = 150;
+const NODE_HEIGHT = 30;
 
-export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }> = ({ graphData }) => {
+interface DependencyGraphProps {
+  graphData: DependencyGraphData | null;
+  highlightedNodeId: string | null;
+  onNodeClick: (nodeId: string | null) => void;
+}
+
+
+export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, highlightedNodeId, onNodeClick }) => {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [draggingNode, setDraggingNode] = useState<Node | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<number>();
 
   const resetSimulation = useCallback(() => {
@@ -61,14 +70,33 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
   useEffect(() => {
     resetSimulation();
   }, [graphData, resetSimulation]);
+
+  const { highlightedNodes, highlightedEdges } = useMemo(() => {
+    if (!highlightedNodeId || !graphData) {
+      return { highlightedNodes: new Set<string>(), highlightedEdges: new Set<string>() };
+    }
+    const nodes = new Set<string>([highlightedNodeId]);
+    const edges = new Set<string>();
+
+    graphData.edges.forEach(edge => {
+      const edgeId = `${edge.source}->${edge.target}`;
+      if (edge.source === highlightedNodeId) {
+        nodes.add(edge.target);
+        edges.add(edgeId);
+      }
+      if (edge.target === highlightedNodeId) {
+        nodes.add(edge.source);
+        edges.add(edgeId);
+      }
+    });
+    
+    return { highlightedNodes: nodes, highlightedEdges: edges };
+  }, [highlightedNodeId, graphData]);
   
   // Force-directed layout simulation
   useEffect(() => {
-    // Stop simulation if there are no edges, or if dragging
     if (edges.length === 0 || draggingNode) {
-      if (simulationRef.current) {
-        cancelAnimationFrame(simulationRef.current);
-      }
+      if (simulationRef.current) cancelAnimationFrame(simulationRef.current);
       return;
     }
 
@@ -78,83 +106,55 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
         
         const newNodes = currentNodes.map(n => ({ ...n }));
 
-        // Forces
-        const repulsionStrength = -2000;
-        const attractionStrength = 0.5;
-        const idealEdgeLength = 100;
+        const repulsionStrength = -3000;
+        const attractionStrength = 0.6;
+        const idealEdgeLength = 150;
         const centerGravity = 0.05;
 
-        // Apply forces
         for (let i = 0; i < newNodes.length; i++) {
           const ni = newNodes[i];
-
-          // Center gravity
           const dxToCenter = VIEWBOX_WIDTH / 2 - ni.x;
           const dyToCenter = VIEWBOX_HEIGHT / 2 - ni.y;
           ni.vx += dxToCenter * centerGravity * 0.01;
           ni.vy += dyToCenter * centerGravity * 0.01;
-
-          // Repulsion from other nodes
           for (let j = i + 1; j < newNodes.length; j++) {
             const nj = newNodes[j];
             const dx = nj.x - ni.x;
             const dy = nj.y - ni.y;
             let distSq = dx * dx + dy * dy;
             if (distSq === 0) distSq = 0.1;
-            
             const force = repulsionStrength / distSq;
-            const forceX = dx * force;
-            const forceY = dy * force;
-
-            ni.vx += forceX;
-            ni.vy += forceY;
-            nj.vx -= forceX;
-            nj.vy -= forceY;
+            ni.vx += dx * force;
+            ni.vy += dy * force;
+            nj.vx -= dx * force;
+            nj.vy -= dy * force;
           }
         }
         
-        // Apply attraction along edges
-        for (const edge of edges) {
+        edges.forEach(edge => {
           const source = newNodes.find(n => n.id === edge.source.id)!;
           const target = newNodes.find(n => n.id === edge.target.id)!;
           const dx = target.x - source.x;
           const dy = target.y - source.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist === 0) continue;
-
+          if (dist === 0) return;
           const displacement = dist - idealEdgeLength;
           const force = attractionStrength * displacement * 0.1;
           const forceX = (dx / dist) * force;
           const forceY = (dy / dist) * force;
-
           source.vx += forceX;
           source.vy += forceY;
           target.vx -= forceX;
           target.vy -= forceY;
-        }
+        });
 
-        // Update positions
         newNodes.forEach(node => {
-          if (node.fx != null) {
-            node.x = node.fx;
-            node.vx = 0;
-          } else {
-            node.x += node.vx;
-          }
-          if (node.fy != null) {
-            node.y = node.fy;
-            node.vy = 0;
-          } else {
-            node.y += node.vy;
-          }
-
-          // Damping
-          node.vx *= 0.9;
-          node.vy *= 0.9;
-          
-          // Boundary check
-          node.x = Math.max(20, Math.min(VIEWBOX_WIDTH - 20, node.x));
-          node.y = Math.max(20, Math.min(VIEWBOX_HEIGHT - 20, node.y));
+          if (node.fx != null) node.x = node.fx; else node.x += node.vx;
+          if (node.fy != null) node.y = node.fy; else node.y += node.vy;
+          node.vx *= 0.95;
+          node.vy *= 0.95;
+          node.x = Math.max(NODE_WIDTH/2, Math.min(VIEWBOX_WIDTH - NODE_WIDTH/2, node.x));
+          node.y = Math.max(NODE_HEIGHT/2, Math.min(VIEWBOX_HEIGHT - NODE_HEIGHT/2, node.y));
         });
 
         return newNodes;
@@ -164,42 +164,25 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
     };
 
     simulationRef.current = requestAnimationFrame(simulation);
+    return () => { if (simulationRef.current) cancelAnimationFrame(simulationRef.current); };
+  }, [edges, draggingNode]);
 
-    return () => {
-      if (simulationRef.current) {
-        cancelAnimationFrame(simulationRef.current);
-      }
-    };
-  }, [edges, draggingNode]); // Depend only on edges and dragging state
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>, node: Node) => {
+  const handleMouseDown = (e: React.MouseEvent, node: Node) => {
     e.preventDefault();
     e.stopPropagation();
     setDraggingNode(node);
   };
   
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!draggingNode || !containerRef.current) return;
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left - pan.x) / zoom;
-    const y = (e.clientY - rect.top - pan.y) / zoom;
-
-    setNodes(prevNodes =>
-      prevNodes.map(n => {
-        if (n.id === draggingNode.id) {
-          const updatedNode = { ...n, fx: x, fy: y };
-          if (n.fx === null || n.fy === null) {
-            // Fix position immediately on first drag move
-            updatedNode.x = x;
-            updatedNode.y = y;
-          }
-          return updatedNode;
-        }
-        return n;
-      })
-    );
-  }, [draggingNode, zoom, pan.x, pan.y]);
+    if (!draggingNode || !svgRef.current) return;
+    const CTM = svgRef.current.getScreenCTM();
+    if (!CTM) return;
+    const svgPoint = svgRef.current.createSVGPoint();
+    svgPoint.x = e.clientX;
+    svgPoint.y = e.clientY;
+    const { x, y } = svgPoint.matrixTransform(CTM.inverse());
+    setNodes(prevNodes => prevNodes.map(n => n.id === draggingNode.id ? { ...n, fx: x, fy: y, x, y } : n));
+  }, [draggingNode]);
 
   const handleMouseUp = useCallback(() => {
     if (!draggingNode) return;
@@ -208,16 +191,12 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
   }, [draggingNode]);
 
   useEffect(() => {
-    if (!draggingNode) return;
-    
-    const container = containerRef.current;
-    if (!container) return;
-
-    container.addEventListener('mousemove', handleMouseMove);
+    const svgElement = svgRef.current;
+    if (!draggingNode || !svgElement) return;
+    svgElement.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp, { once: true });
-
     return () => {
-      container.removeEventListener('mousemove', handleMouseMove);
+      svgElement.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [draggingNode, handleMouseMove, handleMouseUp]);
@@ -243,7 +222,7 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
     <Card className="flex flex-col h-full">
       <CardHeader>
         <CardTitle>의존성 그래프</CardTitle>
-        <CardDescription>파일 간의 import 관계를 시각화합니다. 노드를 드래그할 수 있습니다.</CardDescription>
+        <CardDescription>파일 간의 import 관계를 시각화합니다. 노드를 클릭하거나 드래그할 수 있습니다.</CardDescription>
       </CardHeader>
       <CardContent className="flex-grow relative border rounded-md overflow-hidden bg-muted/20">
         <div className="absolute top-2 right-2 z-10 flex gap-1">
@@ -251,14 +230,14 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
           <Button variant="outline" size="icon" onClick={() => setZoom(z => z / 1.2)}><ZoomOut/></Button>
           <Button variant="outline" size="icon" onClick={resetSimulation}><RefreshCw/></Button>
         </div>
-        <div className='w-full h-full' ref={containerRef}>
-          <svg
-            width="100%"
-            height="100%"
-            viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-          >
-            <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-              {edges.map((edge, i) => (
+        <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}>
+          <rect width={VIEWBOX_WIDTH} height={VIEWBOX_HEIGHT} fill="transparent" onClick={() => onNodeClick(null)} />
+          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+            {edges.map((edge, i) => {
+              const edgeId = `${edge.source.id}->${edge.target.id}`;
+              const isHighlighted = highlightedEdges.has(edgeId);
+              const opacity = highlightedNodeId ? (isHighlighted ? 0.8 : 0.1) : 0.5;
+              return (
                 <line
                   key={i}
                   x1={edge.source.x}
@@ -266,28 +245,50 @@ export const DependencyGraph: React.FC<{ graphData: DependencyGraphData | null }
                   x2={edge.target.x}
                   y2={edge.target.y}
                   stroke="hsl(var(--border))"
-                  strokeWidth={1.5 / zoom}
+                  strokeWidth={isHighlighted ? 2 / zoom : 1 / zoom}
+                  style={{ opacity, transition: 'opacity 0.2s' }}
                 />
-              ))}
-               {nodes.map(node => (
-                 <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
-                    <foreignObject 
-                      x="-75" y="-20" width="150" height="40"
-                      className="overflow-visible"
-                    >
-                      <div
-                        onMouseDown={e => handleMouseDown(e, node)}
-                        className="bg-card border rounded-md px-2 py-1 text-xs shadow-md cursor-grab active:cursor-grabbing w-[150px] text-center truncate"
-                        title={node.id}
-                      >
-                        {getShortName(node.id)}
-                      </div>
-                    </foreignObject>
-                 </g>
-              ))}
-            </g>
-          </svg>
-        </div>
+              );
+            })}
+            {nodes.map(node => {
+              const isPrimary = node.id === highlightedNodeId;
+              const isNeighbor = highlightedNodes.has(node.id) && !isPrimary;
+              const opacity = highlightedNodeId ? (isPrimary || isNeighbor ? 1 : 0.3) : 1;
+              const shortName = getShortName(node.id);
+              return (
+                <g 
+                  key={node.id} 
+                  transform={`translate(${node.x}, ${node.y})`}
+                  onMouseDown={e => handleMouseDown(e, node)}
+                  onClick={e => { e.stopPropagation(); onNodeClick(node.id); }}
+                  className="cursor-pointer"
+                  style={{ opacity, transition: 'opacity 0.2s' }}
+                >
+                  <title>{node.id}</title>
+                  <rect 
+                    x={-NODE_WIDTH / 2} 
+                    y={-NODE_HEIGHT / 2}
+                    width={NODE_WIDTH} 
+                    height={NODE_HEIGHT}
+                    rx="8"
+                    fill={isPrimary ? 'hsl(var(--primary))' : 'hsl(var(--card))'}
+                    stroke={isPrimary ? 'hsl(var(--primary))' : isNeighbor ? 'hsl(var(--accent))' : 'hsl(var(--border))'}
+                    strokeWidth={isPrimary ? 2 / zoom : 1 / zoom}
+                  />
+                  <text
+                    fill={isPrimary ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))'}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize="12"
+                    className="pointer-events-none select-none font-medium"
+                  >
+                    {shortName.length > 22 ? `${shortName.substring(0, 20)}...` : shortName}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
+        </svg>
       </CardContent>
     </Card>
   );

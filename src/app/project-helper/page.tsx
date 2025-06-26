@@ -37,6 +37,7 @@ export default function ProjectHelperPage() {
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
   const [dependencyGraphData, setDependencyGraphData] = useState<DependencyGraphData | null>(null);
   const [impactFile, setImpactFile] = useState<string>('');
+  const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
 
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -82,9 +83,8 @@ export default function ProjectHelperPage() {
   const processAndSetInput = (content: string, source: string) => {
       const parsedMap = parseProjectInput(content);
       setFileMap(parsedMap);
-      setSelectedFile(null);
+      handleNodeHighlight(null);
       setDependencyAnalysis(null);
-      setImpactFile('');
       
       const graphData = parseDependencies(parsedMap);
       setDependencyGraphData(graphData);
@@ -134,9 +134,9 @@ export default function ProjectHelperPage() {
     if (!githubUrl.trim()) return;
     setIsLoading(true);
     setFileMap(null);
-    setSelectedFile(null);
-    setDependencyAnalysis(null);
     setDependencyGraphData(null);
+    handleNodeHighlight(null);
+    setDependencyAnalysis(null);
     try {
       const result = await analyzeGithubRepositoryAction({ repositoryUrl: githubUrl });
       if (result.error) {
@@ -161,7 +161,7 @@ export default function ProjectHelperPage() {
 
     setIsLoading(true);
     setFileMap(null);
-    setSelectedFile(null);
+    handleNodeHighlight(null);
     setDependencyAnalysis(null);
     setDependencyGraphData(null);
 
@@ -243,8 +243,10 @@ export default function ProjectHelperPage() {
     fileInputRef.current?.click();
   };
   
-  const handleFileSelect = (filePath: string) => {
-    setSelectedFile(filePath);
+  const handleNodeHighlight = (nodeId: string | null) => {
+      setHighlightedNode(nodeId);
+      setSelectedFile(nodeId);
+      setImpactFile(nodeId || '');
   };
 
   const { dependencies: impactDependencies, dependents: impactDependents } = useMemo(() => {
@@ -433,7 +435,7 @@ export default function ProjectHelperPage() {
                           <FileTreeDisplay
                             tree={fileTreeObject}
                             selectedFile={selectedFile}
-                            onFileSelect={handleFileSelect}
+                            onFileSelect={handleNodeHighlight}
                           />
                         )}
                         {!isLoading && !fileTreeObject && (
@@ -466,7 +468,11 @@ export default function ProjectHelperPage() {
               </TabsContent>
               <TabsContent value="graph" className="flex-grow mt-4">
                 {dependencyGraphData ? (
-                  <DependencyGraph graphData={dependencyGraphData} />
+                  <DependencyGraph 
+                    graphData={dependencyGraphData} 
+                    highlightedNodeId={highlightedNode}
+                    onNodeClick={handleNodeHighlight}
+                  />
                 ) : (
                   <Card className="h-full flex items-center justify-center min-h-[400px]">
                      <div className="text-center text-muted-foreground p-8">
@@ -490,7 +496,7 @@ export default function ProjectHelperPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Select onValueChange={setImpactFile} value={impactFile} disabled={!fileMap}>
+                            <Select onValueChange={handleNodeHighlight} value={impactFile} disabled={!fileMap}>
                                 <SelectTrigger className="w-full">
                                     <SelectValue placeholder="분석할 파일을 선택하세요..." />
                                 </SelectTrigger>
