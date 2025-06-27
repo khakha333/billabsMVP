@@ -67,11 +67,11 @@ export const AnalysisSummaryDisplay: React.FC<AnalysisSummaryDisplayProps> = ({ 
                           <Button
                             variant="link"
                             className="p-0 h-auto text-sm font-normal text-accent hover:underline"
-                            onClick={() => handleApiClick(lib)}
-                            title={`'${lib}' 사용 예제 보기`}
+                            onClick={() => handleApiClick(lib.name)}
+                            title={`'${lib.name}' 사용 예제 보기`}
                           >
                             <HelpCircle className="h-4 w-4 mr-1.5 flex-shrink-0" />
-                            {lib}
+                            {lib.name}
                           </Button>
                         </li>
                       ))}
