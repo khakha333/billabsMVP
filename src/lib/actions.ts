@@ -12,6 +12,7 @@ import { analyzeDependencies, type AnalyzeDependenciesInput, type AnalyzeDepende
 import { summarizeProject, type SummarizeProjectInput, type SummarizeProjectOutput } from '@/ai/flows/summarize-project-flow';
 import { reviewCode, type ReviewCodeInput, type ReviewCodeOutput } from '@/ai/flows/review-code-flow';
 import { generateUiComponent, type GenerateUiComponentInput, type GenerateUiComponentOutput } from '@/ai/flows/generate-ui-component-flow';
+import { modifyCode, type ModifyCodeInput, type ModifyCodeOutput } from '@/ai/flows/modify-code-flow';
 
 
 import { z } from 'zod';
@@ -222,5 +223,23 @@ export async function generateUiComponentAction(input: GenerateUiComponentInput)
             return { code: `// 입력 오류: ${error.errors.map(e => e.message).join(', ')}\n// --- 컴포넌트 이름은 'UserProfile'과 같이 파스칼 케이스(PascalCase)로 입력해주세요.\n// --- 설명은 10자 이상 구체적으로 작성해주세요.` };
         }
         return { code: `// 컴포넌트 생성 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}` };
+    }
+}
+
+export async function modifyCodeAction(input: ModifyCodeInput): Promise<ModifyCodeOutput> {
+    const ModifyCodeInputSchemaValidation = z.object({
+      code: z.string(),
+      prompt: z.string().min(5, "수정 요청은 최소 5자 이상이어야 합니다."),
+      fileName: z.string().optional(),
+    });
+    try {
+        const validatedInput = ModifyCodeInputSchemaValidation.parse(input);
+        return await modifyCode(validatedInput);
+    } catch (error) {
+        console.error("Error in modifyCodeAction:", error);
+        if (error instanceof z.ZodError) {
+            return { modifiedCode: input.code, explanation: `입력 오류: ${error.errors.map(e => e.message).join(', ')}` };
+        }
+        return { modifiedCode: input.code, explanation: `코드 수정 중 오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}` };
     }
 }

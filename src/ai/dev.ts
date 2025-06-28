@@ -12,3 +12,4 @@ import '@/ai/flows/analyze-dependencies-flow.ts';
 import '@/ai/flows/summarize-project-flow.ts';
 import '@/ai/flows/review-code-flow.ts';
 import '@/ai/flows/generate-ui-component-flow.ts';
+import '@/ai/flows/modify-code-flow.ts';
