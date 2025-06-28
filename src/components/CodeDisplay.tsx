@@ -102,7 +102,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   const codeDisplayRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const lines = code.split('\n');
-  const { focusChatInput } = useChatContext();
+  const chatContext = useChatContext();
 
   const [selectedTextForDialog, setSelectedTextForDialog] = useState<string | null>(null);
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
@@ -190,8 +190,8 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   };
 
   const handleAskInChatFromDialog = () => {
-    if (currentSegmentForDialogExplanation) {
-      focusChatInput(`이 코드 조각에 대해 좀 더 자세히 설명해주세요:\n\`\`\`\n${currentSegmentForDialogExplanation}\n\`\`\``);
+    if (chatContext && currentSegmentForDialogExplanation) {
+      chatContext.focusChatInput(`이 코드 조각에 대해 좀 더 자세히 설명해주세요:\n\`\`\`\n${currentSegmentForDialogExplanation}\n\`\`\``);
       setShowExplanationDialog(false);
     }
   };
@@ -360,10 +360,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
                 그래프에서 영향 분석
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={handleAskInChatFromDialog} className="flex-1">
-              <MessageSquarePlus className="mr-2 h-4 w-4" />
-              채팅으로 질문하기
-            </Button>
+            {chatContext && (
+                <Button type="button" variant="outline" onClick={handleAskInChatFromDialog} className="flex-1">
+                <MessageSquarePlus className="mr-2 h-4 w-4" />
+                채팅으로 질문하기
+                </Button>
+            )}
             <DialogClose asChild>
                 <Button type="button" variant="secondary" className="flex-1">
                 닫기
