@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2, GitCompareArrows, LoaderCircle, BotMessageSquare, Save, Undo } from 'lucide-react';
+import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2, GitCompareArrows, LoaderCircle, BotMessageSquare, Save, Undo, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import { analyzeGithubRepositoryAction, analyzeDependenciesAction, summarizeProjectAction, modifyCodeAction, reviewCodeAction } from '@/lib/actions';
@@ -446,32 +446,46 @@ export default function ProjectHelperPage() {
                           <Card><CardHeader><CardTitle className="text-lg flex items-center gap-2"><Wand2 className="h-5 w-5 text-primary" />AI 설명</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{modifiedResult.explanation}</p></CardContent><CardFooter className="flex justify-end gap-2"><Button variant="outline" onClick={handleDiscardChanges}>취소</Button><Button onClick={handleApplyChanges}>편집기에 적용</Button></CardFooter></Card>
                         </div>
                       ) : selectedFile ? (
-                        <Card className="flex flex-col h-full">
-                            <CardHeader className="flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle>편집: {selectedFile.split('/').pop()}</CardTitle>
-                                    <CardDescription>{selectedFile}</CardDescription>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button size="sm" variant="outline" onClick={handleRevertChanges} disabled={!isDirty}><Undo className="mr-2 h-4 w-4" />되돌리기</Button>
-                                    <Button size="sm" onClick={handleSaveChanges} disabled={!isDirty}><Save className="mr-2 h-4 w-4" />프로젝트에 저장</Button>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="flex-grow p-0">
-                                <Textarea 
-                                    value={activeCode || ''}
-                                    onChange={handleCodeChange}
-                                    className="w-full h-full min-h-[400px] border-0 rounded-none focus-visible:ring-0"
-                                    placeholder="파일 내용이 여기에 표시됩니다..."
-                                />
-                            </CardContent>
-                             <CardFooter className="border-t pt-4">
-                                <Button onClick={handleRequestAIAssistance} disabled={isModifying || !activeCode} className="w-full">
-                                    <Wand2 className="mr-2 h-4 w-4" />
-                                    {isModifying ? '분석 중...' : 'AI로 코드 개선 (리팩토링 및 디버깅)'}
-                                </Button>
-                            </CardFooter>
-                        </Card>
+                        <div className="flex flex-col h-full border rounded-lg shadow-sm bg-card">
+                          {/* Editor Header / Tab */}
+                          <div className="flex items-center justify-between p-2 border-b bg-muted/50 rounded-t-lg">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                  <span className="font-mono text-sm truncate" title={selectedFile}>{selectedFile}</span>
+                                  {isDirty && <div className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" title="수정된 내용이 있습니다"></div>}
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                  <Button size="sm" variant="ghost" onClick={handleRevertChanges} disabled={!isDirty || isModifying}>
+                                      <Undo className="mr-2 h-4 w-4" />
+                                      되돌리기
+                                  </Button>
+                                  <Button size="sm" onClick={handleSaveChanges} disabled={!isDirty || isModifying}>
+                                      <Save className="mr-2 h-4 w-4" />
+                                      저장
+                                  </Button>
+                              </div>
+                          </div>
+                      
+                          {/* Editor Pane */}
+                          <div className="flex-grow bg-[#282c34] p-0 overflow-y-auto">
+                              <Textarea
+                                  value={activeCode || ''}
+                                  onChange={handleCodeChange}
+                                  className="w-full h-full min-h-[400px] bg-transparent text-gray-200 border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none"
+                                  placeholder="파일 내용이 여기에 표시됩니다..."
+                                  disabled={isModifying}
+                                  spellCheck="false"
+                              />
+                          </div>
+                      
+                          {/* Editor Footer */}
+                          <div className="p-2 border-t bg-muted/50 rounded-b-lg">
+                              <Button onClick={handleRequestAIAssistance} disabled={isModifying || !activeCode} className="w-full">
+                                  <Wand2 className="mr-2 h-4 w-4" />
+                                  {isModifying ? '분석 중...' : 'AI로 코드 개선 (리팩토링 및 디버깅)'}
+                              </Button>
+                          </div>
+                        </div>
                       ) : <Card className="h-full flex items-center justify-center min-h-[400px]"><div className="text-center text-muted-foreground p-8"><FolderTree className="h-16 w-16 mb-4 opacity-50 mx-auto" /><p className="text-lg">파일을 선택하면 코드가 표시됩니다.</p></div></Card>}
                   </div>
               </TabsContent>
@@ -509,5 +523,3 @@ export default function ProjectHelperPage() {
       </div>
   );
 }
-
-    
