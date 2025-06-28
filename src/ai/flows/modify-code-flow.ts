@@ -10,7 +10,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-export const ModifyCodeInputSchema = z.object({
+const ModifyCodeInputSchema = z.object({
   code: z.string().describe('The original source code to be modified.'),
   prompt: z
     .string()
@@ -21,7 +21,7 @@ export const ModifyCodeInputSchema = z.object({
 });
 export type ModifyCodeInput = z.infer<typeof ModifyCodeInputSchema>;
 
-export const ModifyCodeOutputSchema = z.object({
+const ModifyCodeOutputSchema = z.object({
   modifiedCode: z.string().describe('The complete, modified source code.'),
   explanation: z
     .string()
