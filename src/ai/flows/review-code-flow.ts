@@ -24,6 +24,8 @@ const SuggestionSchema = z.object({
   suggestion: z.string().describe('A detailed explanation of the issue and how to fix it, in Korean.'),
 });
 
+export type Suggestion = z.infer<typeof SuggestionSchema>;
+
 const ReviewCodeOutputSchema = z.object({
   suggestions: z.array(SuggestionSchema).describe('A list of review suggestions for the provided code.'),
 });
