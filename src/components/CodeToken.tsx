@@ -14,6 +14,7 @@ import { useChatContext } from '@/contexts/ChatContext'; // Import chat context
 interface CodeTokenProps {
   token: string;
   fullCodeContext: string;
+  isInteractive?: boolean;
 }
 
 const KEYWORDS = new Set([
@@ -108,8 +109,9 @@ const getLineContainingToken = (fullCode: string, tokenValue: string, spanElemen
 };
 
 
-export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) => {
-  const { focusChatInput } = useChatContext() || {}; // Get chat context function safely
+export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext, isInteractive = true }) => {
+  const chatContext = useChatContext();
+  const { focusChatInput } = chatContext || {};
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
@@ -120,13 +122,15 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
 
   const tokenType = getTokenType(token);
 
-  const isExplainable =
+  const isPotentiallyExplainable =
     token.trim().length > 0 &&
     (tokenType === 'identifier' ||
       tokenType === 'string' ||
       tokenType === 'comment' ||
       tokenType === 'constant-convention'
     ) && !KEYWORDS.has(token);
+
+  const isExplainable = isInteractive && isPotentiallyExplainable;
 
 
   const handleFetchExplanation = async (segmentToExplain: string) => {

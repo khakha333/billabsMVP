@@ -20,6 +20,8 @@ interface CodeDisplayProps {
   fileName?: string;
   onSegmentSelect?: (segment: string | null) => void;
   highlightedLines?: { start: number; end: number } | null;
+  variant?: 'full' | 'minimal';
+  className?: string;
 }
 
 const tokenizeCode = (code: string): string[] => {
@@ -98,10 +100,10 @@ const extractFunctionNameFromLine = (line: string): string | null => {
 };
 
 
-export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegmentSelect, highlightedLines }) => {
+export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegmentSelect, highlightedLines, variant = 'full', className }) => {
   const codeDisplayRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const lines = code.split('\n');
+  const lines = (code || '').split('\n');
   const chatContext = useChatContext();
 
   const [selectedTextForDialog, setSelectedTextForDialog] = useState<string | null>(null);
@@ -125,7 +127,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
 
 
   const handleMouseUp = () => {
-    if (!codeDisplayRef.current) return;
+    if (!codeDisplayRef.current || variant !== 'full') return;
 
     const selection = window.getSelection();
     const text = selection?.toString().trim();
@@ -145,7 +147,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [code]);
+  }, [code, variant]);
 
   const requestExplanationForSegment = async (segment: string, titleHint: string) => {
     if (!segment) return;
@@ -242,9 +244,58 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
     };
   };
 
+  const isInteractive = variant === 'full';
+
+  const codeRenderer = (
+    <pre className={cn("font-mono text-sm leading-relaxed whitespace-pre-wrap break-words relative", isInteractive ? 'bg-background rounded-md p-4' : 'bg-transparent text-gray-200')}>
+      {lines.map((line, lineIndex) => {
+        const lineTokens = tokenizeCode(line);
+        const functionName = isInteractive ? extractFunctionNameFromLine(line) : null;
+        const isHighlighted = highlightedLines ? lineIndex + 1 >= highlightedLines.start && lineIndex + 1 <= highlightedLines.end : false;
+
+        return (
+          <div 
+            key={lineIndex} 
+            className={cn("flex items-start py-0.5", isInteractive && "transition-colors duration-300", isHighlighted && "bg-primary/10 rounded-md")}
+            data-line-number={lineIndex + 1}
+          >
+            {isInteractive && (
+              <>
+                <div className="line-prefix w-12 flex-shrink-0 text-right pr-2 text-muted-foreground text-xs select-none pt-[1px]">
+                  {lineIndex + 1}
+                </div>
+                <div className="line-button-container w-6 flex-shrink-0 pt-[1px] flex items-center justify-center">
+                  {functionName && (
+                     <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
+                      onClick={() => handleExplainFunctionByName(functionName)}
+                      title={`함수 "${functionName}" 설명 보기`}
+                    >
+                      <Wand2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+            <code className="line-content flex-grow whitespace-pre break-words">
+              {lineTokens.map((token, tokenIndex) => (
+                <CodeToken key={tokenIndex} token={token} fullCodeContext={code} isInteractive={isInteractive} />
+              ))}
+            </code>
+          </div>
+        );
+      })}
+    </pre>
+  );
+
+  if (variant === 'minimal') {
+    return <div className={className}>{codeRenderer}</div>;
+  }
 
   return (
-    <Card className="h-full flex flex-col relative" ref={codeDisplayRef}>
+    <Card className={cn("h-full flex flex-col relative", className)} ref={codeDisplayRef}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-xl truncate">
           <FileText className="h-6 w-6 text-primary flex-shrink-0" />
@@ -258,44 +309,8 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden p-0">
-        <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
-          <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words bg-background rounded-md relative">
-            {lines.map((line, lineIndex) => {
-              const lineTokens = tokenizeCode(line);
-              const functionName = extractFunctionNameFromLine(line);
-              const isHighlighted = highlightedLines ? lineIndex + 1 >= highlightedLines.start && lineIndex + 1 <= highlightedLines.end : false;
-
-              return (
-                <div 
-                  key={lineIndex} 
-                  className={cn("flex items-start py-0.5 transition-colors duration-300", isHighlighted && "bg-primary/10 rounded-md")}
-                  data-line-number={lineIndex + 1}
-                >
-                  <div className="line-prefix w-12 flex-shrink-0 text-right pr-2 text-muted-foreground text-xs select-none pt-[1px]">
-                    {lineIndex + 1}
-                  </div>
-                  <div className="line-button-container w-6 flex-shrink-0 pt-[1px] flex items-center justify-center">
-                    {functionName && (
-                       <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
-                        onClick={() => handleExplainFunctionByName(functionName)}
-                        title={`함수 "${functionName}" 설명 보기`}
-                      >
-                        <Wand2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                  <code className="line-content flex-grow whitespace-pre break-words">
-                    {lineTokens.map((token, tokenIndex) => (
-                      <CodeToken key={tokenIndex} token={token} fullCodeContext={code} />
-                    ))}
-                  </code>
-                </div>
-              );
-            })}
-          </pre>
+        <ScrollArea className="h-full" ref={scrollAreaRef}>
+          {codeRenderer}
         </ScrollArea>
       </CardContent>
 

@@ -25,6 +25,7 @@ import { ProjectSummaryDisplay } from '@/components/ProjectSummaryDisplay';
 import { Textarea } from '@/components/ui/textarea';
 import { CodeDiffViewer } from '@/components/CodeDiffViewer';
 import { CodeReviewDisplay } from '@/components/CodeReviewDisplay';
+import { CodeDisplay } from '@/components/CodeDisplay';
 
 
 interface TreeNode {
@@ -467,19 +468,26 @@ export default function ProjectHelperPage() {
                           </div>
                       
                           {/* Editor Pane */}
-                          <div className="flex-grow bg-[#282c34] p-0 overflow-y-auto">
-                              <Textarea
-                                  value={activeCode || ''}
-                                  onChange={handleCodeChange}
-                                  className="w-full h-full min-h-[400px] bg-transparent text-gray-200 border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none"
-                                  placeholder="파일 내용이 여기에 표시됩니다..."
-                                  disabled={isModifying}
-                                  spellCheck="false"
-                              />
+                          <div className="flex-grow bg-[#282c34] p-0 overflow-y-auto rounded-b-lg">
+                            <div className="relative font-mono text-sm">
+                                <CodeDisplay
+                                    code={activeCode || ''}
+                                    variant="minimal"
+                                    className="w-full min-h-[400px] !p-4 !bg-transparent pointer-events-none"
+                                />
+                                <Textarea
+                                    value={activeCode || ''}
+                                    onChange={handleCodeChange}
+                                    className="absolute inset-0 w-full h-full min-h-[400px] bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none resize-none"
+                                    placeholder={!activeCode ? "파일 내용이 여기에 표시됩니다..." : ""}
+                                    disabled={isModifying}
+                                    spellCheck="false"
+                                />
+                            </div>
                           </div>
                       
                           {/* Editor Footer */}
-                          <div className="p-2 border-t bg-muted/50 rounded-b-lg">
+                          <div className="p-2 border-t bg-muted/50">
                               <Button onClick={handleRequestAIAssistance} disabled={isModifying || !activeCode} className="w-full">
                                   <Wand2 className="mr-2 h-4 w-4" />
                                   {isModifying ? '분석 중...' : 'AI로 코드 개선 (리팩토링 및 디버깅)'}
