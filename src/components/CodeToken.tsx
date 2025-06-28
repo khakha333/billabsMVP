@@ -109,7 +109,7 @@ const getLineContainingToken = (fullCode: string, tokenValue: string, spanElemen
 
 
 export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) => {
-  const { focusChatInput } = useChatContext(); // Get chat context function
+  const { focusChatInput } = useChatContext() || {}; // Get chat context function safely
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
@@ -198,9 +198,11 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
   };
 
   const handleAskInChat = () => {
-    const segment = isShiftPressed ? getLineContainingToken(fullCodeContext, token, tokenRef.current) || token : token;
-    focusChatInput(`이 코드 조각에 대해 더 자세히 알려줘:\n\`\`\`\n${segment}\n\`\`\``);
-    setIsTooltipOpen(false); // Close tooltip after clicking
+    if (focusChatInput) {
+      const segment = isShiftPressed ? getLineContainingToken(fullCodeContext, token, tokenRef.current) || token : token;
+      focusChatInput(`이 코드 조각에 대해 더 자세히 알려줘:\n\`\`\`\n${segment}\n\`\`\``);
+      setIsTooltipOpen(false); // Close tooltip after clicking
+    }
   };
 
   if (token === '\n') {
@@ -287,7 +289,7 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext }) 
         {isTooltipOpen && ( 
           <TooltipContent side="top" align="start" className="max-w-md bg-popover text-popover-foreground p-3 rounded-md border shadow-xl text-sm ">
             <div className="whitespace-pre-wrap">{tooltipText()}</div>
-            {(explanation || lineExplanation) && !isLoading && (
+            {(explanation || lineExplanation) && !isLoading && focusChatInput && (
               <Button
                 variant="link"
                 size="sm"
