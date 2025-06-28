@@ -9,22 +9,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2, GitCompareArrows, LoaderCircle, BotMessageSquare } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2, GitCompareArrows, LoaderCircle, BotMessageSquare, Save, Undo } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import { analyzeGithubRepositoryAction, analyzeDependenciesAction, summarizeProjectAction, modifyCodeAction, reviewCodeAction } from '@/lib/actions';
 import type { AnalyzeDependenciesOutput } from '@/ai/flows/analyze-dependencies-flow';
-import type { ReviewCodeOutput } from '@/ai/flows/review-code-flow';
+import type { ReviewCodeOutput, Suggestion } from '@/ai/flows/review-code-flow';
 import type { SummarizeProjectOutput } from '@/ai/flows/summarize-project-flow';
 import { FileTreeDisplay } from '@/components/FileTreeDisplay';
-import { CodeDisplay } from '@/components/CodeDisplay';
 import { ProjectVisualization } from '@/components/ProjectVisualization';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DependencyGraph } from '@/components/DependencyGraph';
 import { parseDependencies, type DependencyGraphData } from '@/lib/dependency-parser';
 import { ProjectSummaryDisplay } from '@/components/ProjectSummaryDisplay';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { CodeDiffViewer } from '@/components/CodeDiffViewer';
 import { CodeReviewDisplay } from '@/components/CodeReviewDisplay';
@@ -48,9 +45,9 @@ export default function ProjectHelperPage() {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [combinedCode, setCombinedCode] = useState<string | null>(null);
 
+  const [activeCode, setActiveCode] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
   const [isModifying, setIsModifying] = useState(false);
-  const [showModifyDialog, setShowModifyDialog] = useState(false);
-  const [modificationPrompt, setModificationPrompt] = useState('');
   const [modifiedResult, setModifiedResult] = useState<{ code: string; explanation: string } | null>(null);
   
   const [reviewResult, setReviewResult] = useState<ReviewCodeOutput | null>(null);
@@ -64,6 +61,42 @@ export default function ProjectHelperPage() {
       document.title = '프로젝트 도우미 - 코드 인사이트';
     }
   }, []);
+
+  useEffect(() => {
+    if (selectedFile && fileMap) {
+      setActiveCode(fileMap.get(selectedFile) || '');
+      setIsDirty(false);
+      setModifiedResult(null); // Clear diff view when changing files
+      setReviewResult(null); // Clear review view
+    } else {
+      setActiveCode(null);
+    }
+  }, [selectedFile, fileMap]);
+
+  const handleCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newCode = e.target.value;
+    setActiveCode(newCode);
+    const originalCode = fileMap?.get(selectedFile!);
+    setIsDirty(originalCode !== newCode);
+  };
+
+  const handleSaveChanges = () => {
+    if (!selectedFile || !fileMap || activeCode === null) return;
+    const newFileMap = new Map(fileMap);
+    newFileMap.set(selectedFile, activeCode);
+    setFileMap(newFileMap); // This will trigger re-renders and re-analysis
+    const newGraphData = parseDependencies(newFileMap);
+    setDependencyGraphData(newGraphData);
+    setIsDirty(false);
+    toast({ title: "저장 완료", description: `'${selectedFile}' 파일이 프로젝트 상태에 저장되었습니다.` });
+  };
+  
+  const handleRevertChanges = () => {
+    if (!selectedFile || !fileMap) return;
+    setActiveCode(fileMap.get(selectedFile) || '');
+    setIsDirty(false);
+  };
+
 
   const parseProjectInput = (fullCode: string): Map<string, string> => {
     const files = new Map<string, string>();
@@ -100,6 +133,8 @@ export default function ProjectHelperPage() {
   const resetProjectState = () => {
     setFileMap(null);
     setSelectedFile(null);
+    setActiveCode(null);
+    setIsDirty(false);
     setDependencyAnalysis(null);
     setDependencyGraphData(null);
     setProjectSummary(null);
@@ -258,35 +293,25 @@ export default function ProjectHelperPage() {
   const handleNodeHighlight = (nodeId: string | null) => {
       setHighlightedNode(nodeId);
       setSelectedFile(nodeId);
-      setModifiedResult(null);
-      setReviewResult(null);
   };
   
-  const handleRequestModification = async (prefilledPrompt?: string) => {
-      const promptToUse = prefilledPrompt || modificationPrompt;
-      if (!promptToUse || !selectedFile || !fileMap) return;
+  const handleRequestModification = async (prompt: string, codeToModify?: string) => {
+      const code = codeToModify ?? activeCode;
+      if (!prompt || !selectedFile || code === null) return;
 
-      setShowModifyDialog(false);
       setIsModifying(true);
       setModifiedResult(null);
 
-      const originalCode = fileMap.get(selectedFile);
-      if (!originalCode) {
-          toast({ title: "오류", description: "원본 코드를 찾을 수 없습니다.", variant: "destructive" });
-          setIsModifying(false);
-          return;
-      }
-
       try {
           const result = await modifyCodeAction({
-              code: originalCode,
-              prompt: promptToUse,
+              code: code,
+              prompt: prompt,
               fileName: selectedFile,
           });
 
-          if (result.modifiedCode !== originalCode) {
+          if (result.modifiedCode !== code) {
               setModifiedResult({ code: result.modifiedCode, explanation: result.explanation });
-              toast({ title: "수정 제안 생성 완료", description: "AI가 생성한 코드 변경사항을 확인하세요." });
+              toast({ title: "AI 수정 제안 생성 완료", description: "AI가 생성한 코드 변경사항을 확인하세요." });
           } else {
               toast({ title: "변경사항 없음", description: result.explanation || "AI가 코드를 변경하지 않았습니다." });
           }
@@ -294,17 +319,19 @@ export default function ProjectHelperPage() {
           toast({ title: "오류", description: error instanceof Error ? error.message : "코드 수정 중 오류 발생", variant: "destructive" });
       } finally {
           setIsModifying(false);
-          setModificationPrompt('');
       }
   };
 
+  const handleRequestAIAssistance = () => {
+    handleRequestModification("이 코드를 검토하고 리팩토링해주세요. 버그를 수정하고, 성능을 개선하며, 가독성을 향상시켜주세요. 변경사항을 코드에 직접 적용해주세요.", activeCode!);
+  }
+
   const handleApplyChanges = () => {
-      if (!modifiedResult || !selectedFile || !fileMap) return;
-      const newFileMap = new Map(fileMap);
-      newFileMap.set(selectedFile, modifiedResult.code);
-      setFileMap(newFileMap);
+      if (!modifiedResult || !selectedFile) return;
+      setActiveCode(modifiedResult.code);
+      setIsDirty(true);
       setModifiedResult(null);
-      toast({ title: "변경사항 적용됨", description: `'${selectedFile}' 파일이 업데이트되었습니다.` });
+      toast({ title: "변경사항 적용됨", description: `변경사항이 편집기에 적용되었습니다. '프로젝트에 저장' 버튼을 눌러 확정하세요.` });
   };
 
   const handleDiscardChanges = () => setModifiedResult(null);
@@ -320,6 +347,11 @@ export default function ProjectHelperPage() {
       const code = fileMap.get(selectedFile)!;
       const result = await reviewCodeAction({ code, fileName: selectedFile });
       setReviewResult(result);
+      if (result.suggestions.length > 0) {
+        toast({ title: "검토 완료", description: `${result.suggestions.length}개의 개선 제안을 찾았습니다.` });
+      } else {
+        toast({ title: "검토 완료", description: "좋은 코드입니다! AI가 특별한 제안을 찾지 못했습니다." });
+      }
     } catch(error) {
       toast({ title: "리뷰 오류", description: error instanceof Error ? error.message : "코드 검토 중 오류 발생", variant: "destructive" });
     } finally {
@@ -397,24 +429,49 @@ export default function ProjectHelperPage() {
           <div className="lg:w-2/3 flex flex-col gap-6">
              <Tabs defaultValue="explorer" className="w-full flex-grow flex flex-col">
               <TabsList className="w-full grid grid-cols-3">
-                <TabsTrigger value="explorer"><FolderTree className="h-5 w-5 mr-2" />파일 탐색기</TabsTrigger>
+                <TabsTrigger value="explorer"><FolderTree className="h-5 w-5 mr-2" />파일 탐색기 및 편집기</TabsTrigger>
                 <TabsTrigger value="graph" disabled={!dependencyGraphData}><Share2 className="h-5 w-5 mr-2" />의존성 그래프</TabsTrigger>
-                <TabsTrigger value="review" disabled={!fileMap}><BotMessageSquare className="h-5 w-5 mr-2" />AI 코드 검토</TabsTrigger>
+                <TabsTrigger value="review" disabled={!fileMap || !selectedFile}><BotMessageSquare className="h-5 w-5 mr-2" />AI 코드 검토</TabsTrigger>
               </TabsList>
               <TabsContent value="explorer" className="flex-grow mt-4 flex flex-col gap-6">
                   <Card className="flex-grow flex flex-col">
-                    <CardHeader><CardTitle className="flex items-center gap-2 text-xl"><FolderTree className="h-5 w-5" />프로젝트 구조</CardTitle><CardDescription>프로젝트 파일을 클릭하여 내용을 확인하고 AI로 수정하세요.</CardDescription></CardHeader>
+                    <CardHeader><CardTitle className="flex items-center gap-2 text-xl"><FolderTree className="h-5 w-5" />프로젝트 구조</CardTitle><CardDescription>프로젝트 파일을 클릭하여 아래 편집기에서 내용을 확인하고 수정하세요.</CardDescription></CardHeader>
                     <CardContent className="flex-grow"><ScrollArea className="h-full min-h-[200px] max-h-[300px] p-1 border rounded-md bg-muted/30">{isLoading ? <div className="p-4 text-center text-muted-foreground animate-pulse"><p>파일 구조 생성 중...</p></div> : fileTreeObject ? <FileTreeDisplay tree={fileTreeObject} selectedFile={selectedFile} onFileSelect={handleNodeHighlight} /> : <div className="p-4 text-center text-muted-foreground h-full flex flex-col justify-center items-center"><FolderKanban className="h-12 w-12 mb-4 opacity-50" /><p>왼쪽에서 프로젝트를 로드하세요.</p></div>}</ScrollArea></CardContent>
                   </Card>
                   <div className="min-h-[400px]">
                      {isModifying ? <Card className="h-full flex items-center justify-center min-h-[400px]"><div className="text-center text-muted-foreground p-8"><LoaderCircle className="h-16 w-16 mb-4 opacity-50 mx-auto animate-spin" /><p className="text-lg">AI가 코드를 수정하고 있습니다...</p></div></Card>
                       : modifiedResult ? (
                         <div className="flex flex-col gap-4">
-                          <CodeDiffViewer originalCode={fileMap?.get(selectedFile || '') || ''} modifiedCode={modifiedResult.code} fileName={selectedFile || ''} />
-                          <Card><CardHeader><CardTitle className="text-lg flex items-center gap-2"><Wand2 className="h-5 w-5 text-primary" />AI 설명</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{modifiedResult.explanation}</p></CardContent><CardFooter className="flex justify-end gap-2"><Button variant="outline" onClick={handleDiscardChanges}>취소</Button><Button onClick={handleApplyChanges}>변경사항 적용</Button></CardFooter></Card>
+                          <CodeDiffViewer originalCode={activeCode || ''} modifiedCode={modifiedResult.code} fileName={selectedFile || ''} />
+                          <Card><CardHeader><CardTitle className="text-lg flex items-center gap-2"><Wand2 className="h-5 w-5 text-primary" />AI 설명</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{modifiedResult.explanation}</p></CardContent><CardFooter className="flex justify-end gap-2"><Button variant="outline" onClick={handleDiscardChanges}>취소</Button><Button onClick={handleApplyChanges}>편집기에 적용</Button></CardFooter></Card>
                         </div>
-                      ) : selectedFile && fileMap ? (
-                        <><CodeDisplay code={fileMap.get(selectedFile) || ''} fileName={selectedFile} /><div className="flex justify-end mt-4"><Button onClick={() => setShowModifyDialog(true)}><Wand2 className="mr-2 h-4 w-4" />AI로 코드 수정</Button></div></>
+                      ) : selectedFile ? (
+                        <Card className="flex flex-col h-full">
+                            <CardHeader className="flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle>편집: {selectedFile.split('/').pop()}</CardTitle>
+                                    <CardDescription>{selectedFile}</CardDescription>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button size="sm" variant="outline" onClick={handleRevertChanges} disabled={!isDirty}><Undo className="mr-2 h-4 w-4" />되돌리기</Button>
+                                    <Button size="sm" onClick={handleSaveChanges} disabled={!isDirty}><Save className="mr-2 h-4 w-4" />프로젝트에 저장</Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="flex-grow p-0">
+                                <Textarea 
+                                    value={activeCode || ''}
+                                    onChange={handleCodeChange}
+                                    className="w-full h-full min-h-[400px] border-0 rounded-none focus-visible:ring-0"
+                                    placeholder="파일 내용이 여기에 표시됩니다..."
+                                />
+                            </CardContent>
+                             <CardFooter className="border-t pt-4">
+                                <Button onClick={handleRequestAIAssistance} disabled={isModifying || !activeCode} className="w-full">
+                                    <Wand2 className="mr-2 h-4 w-4" />
+                                    {isModifying ? '분석 중...' : 'AI로 코드 개선 (리팩토링 및 디버깅)'}
+                                </Button>
+                            </CardFooter>
+                        </Card>
                       ) : <Card className="h-full flex items-center justify-center min-h-[400px]"><div className="text-center text-muted-foreground p-8"><FolderTree className="h-16 w-16 mb-4 opacity-50 mx-auto" /><p className="text-lg">파일을 선택하면 코드가 표시됩니다.</p></div></Card>}
                   </div>
               </TabsContent>
@@ -427,7 +484,7 @@ export default function ProjectHelperPage() {
                             AI 코드 검토
                         </CardTitle>
                         <CardDescription>
-                            AI 에이전트가 코드의 문제점을 찾고 수정을 제안합니다. 먼저 검토할 파일을 선택한 후, 'AI로 검토 실행' 버튼을 누르세요.
+                            AI 에이전트가 코드의 문제점을 찾고 수정을 제안합니다. 'AI로 검토 실행' 버튼을 눌러주세요.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-4 flex-grow">
@@ -439,7 +496,7 @@ export default function ProjectHelperPage() {
                             <CodeReviewDisplay
                                 reviewResult={reviewResult}
                                 isLoading={isReviewing}
-                                onSuggestionFix={(suggestion) => handleRequestModification(`다음 코드 리뷰 제안에 따라 코드를 수정해 주세요: [${suggestion.severity}] ${suggestion.title} - ${suggestion.suggestion}`)}
+                                onSuggestionFix={(suggestion: Suggestion) => handleRequestModification(`다음 코드 리뷰 제안에 따라 코드를 수정해 주세요: [${suggestion.severity}] ${suggestion.title} - ${suggestion.suggestion}`, activeCode || '')}
                             />
                         </div>
                     </CardContent>
@@ -449,13 +506,8 @@ export default function ProjectHelperPage() {
           </div>
         </main>
         <footer className="py-4 text-center text-sm text-muted-foreground border-t">코드 인사이트 &copy; {new Date().getFullYear()}</footer>
-        <Dialog open={showModifyDialog} onOpenChange={setShowModifyDialog}>
-            <DialogContent>
-                <DialogHeader><DialogTitle>AI로 코드 수정하기</DialogTitle><DialogDescription>'{selectedFile || '선택된 파일'}'에 적용할 수정사항을 AI에게 요청하세요. (예: "모든 함수에 JSDoc 주석 추가")</DialogDescription></DialogHeader>
-                <div className="py-4"><Textarea placeholder="수정 요청사항을 입력하세요..." value={modificationPrompt} onChange={(e) => setModificationPrompt(e.target.value)} className="min-h-[100px]" /></div>
-                <DialogFooter><Button variant="ghost" onClick={() => setShowModifyDialog(false)}>취소</Button><Button onClick={() => handleRequestModification()} disabled={!modificationPrompt.trim() || isModifying}>수정 요청</Button></DialogFooter>
-            </DialogContent>
-        </Dialog>
       </div>
   );
 }
+
+    
