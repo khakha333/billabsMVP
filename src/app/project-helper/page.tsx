@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -549,7 +548,7 @@ export default function ProjectHelperPage() {
                                     ref={editorTextareaRef}
                                     value={activeCode || ''}
                                     onChange={handleCodeChange}
-                                    className="absolute inset-0 w-full h-full min-h-[400px] bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none resize-none leading-relaxed"
+                                    className="absolute inset-0 w-full h-full min-h-[400px] bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none resize-none leading-relaxed whitespace-pre-wrap break-words [tab-size:4]"
                                     placeholder={!activeCode ? "파일 내용이 여기에 표시됩니다..." : ""}
                                     disabled={isModifying}
                                     spellCheck="false"
@@ -623,5 +622,3 @@ export default function ProjectHelperPage() {
       </div>
   );
 }
-
-    

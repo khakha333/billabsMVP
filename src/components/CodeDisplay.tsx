@@ -1,4 +1,3 @@
-
 "use client";
 
 import type React from 'react';
@@ -192,7 +191,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   };
 
   const handleAskInChatFromDialog = () => {
-    if (chatContext && currentSegmentForDialogExplanation) {
+    if (chatContext?.focusChatInput && currentSegmentForDialogExplanation) {
       chatContext.focusChatInput(`이 코드 조각에 대해 좀 더 자세히 설명해주세요:\n\`\`\`\n${currentSegmentForDialogExplanation}\n\`\`\``);
       setShowExplanationDialog(false);
     }
@@ -247,7 +246,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   const isInteractive = variant === 'full';
 
   const codeRenderer = (
-    <pre className={cn("font-mono text-sm leading-relaxed whitespace-pre-wrap break-words relative", isInteractive ? 'bg-background rounded-md p-4' : 'bg-transparent text-gray-200')}>
+    <pre className={cn("font-mono text-sm whitespace-pre-wrap break-words relative [tab-size:4]", isInteractive ? 'bg-background rounded-md p-4' : 'bg-transparent text-gray-200')}>
       {lines.map((line, lineIndex) => {
         const lineTokens = tokenizeCode(line);
         const functionName = isInteractive ? extractFunctionNameFromLine(line) : null;
@@ -291,7 +290,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   );
 
   if (variant === 'minimal') {
-    return <div className={className}>{codeRenderer}</div>;
+    return <div className={cn(className, "leading-relaxed")}>{codeRenderer}</div>;
   }
 
   return (
