@@ -13,6 +13,7 @@ import {z} from 'genkit';
 const ReviewCodeInputSchema = z.object({
   code: z.string().describe('The source code to be reviewed.'),
   fileName: z.string().optional().describe('The name of the file being reviewed, for context.'),
+  originalCode: z.string().optional().describe('The original code before modification, for context on the changes.'),
 });
 export type ReviewCodeInput = z.infer<typeof ReviewCodeInputSchema>;
 
@@ -42,8 +43,19 @@ const prompt = ai.definePrompt({
   prompt: `You are an expert code reviewer with years of experience in software development.
 Your task is to analyze the provided source code and identify areas for improvement.
 
+{{#if originalCode}}
+A user has modified the code. Your primary focus should be on reviewing the CHANGES between the 'Original Code' and the 'Code to Review'.
+Analyze if the changes introduce new bugs, performance issues, or bad practices. Also, suggest better ways to implement the user's intent if possible.
+While you should focus on the diff, consider the context of the entire file.
+
+Original Code:
+\`\`\`
+{{{originalCode}}}
+\`\`\`
+{{/if}}
+
 For each issue you find, provide a suggestion with the following details:
--   **lineStart & lineEnd**: The exact line numbers where the issue is located.
+-   **lineStart & lineEnd**: The exact line numbers (in the 'Code to Review') where the issue is located.
 -   **severity**: Classify the severity as 'High', 'Medium', 'Low', or 'Info'.
     -   'High': Potential bugs, security vulnerabilities, or major performance issues.
     -   'Medium': Bad practices, non-performant code, or things that could lead to bugs.

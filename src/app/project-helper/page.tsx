@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, FolderKanban, Wand2, GitBranch, FileUp, FolderTree, Package, BarChart3, Share2, GitCompareArrows, LoaderCircle, BotMessageSquare, Save, Undo, FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import JSZip from 'jszip';
 import { analyzeGithubRepositoryAction, analyzeDependenciesAction, summarizeProjectAction, modifyCodeAction, reviewCodeAction } from '@/lib/actions';
@@ -54,6 +55,10 @@ export default function ProjectHelperPage() {
   const [reviewResult, setReviewResult] = useState<ReviewCodeOutput | null>(null);
   const [isReviewing, setIsReviewing] = useState(false);
 
+  const [changesReviewResult, setChangesReviewResult] = useState<ReviewCodeOutput | null>(null);
+  const [isReviewingChanges, setIsReviewingChanges] = useState(false);
+  const [isReviewDialogVisible, setIsReviewDialogVisible] = useState(false);
+
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,6 +101,41 @@ export default function ProjectHelperPage() {
     if (!selectedFile || !fileMap) return;
     setActiveCode(fileMap.get(selectedFile) || '');
     setIsDirty(false);
+  };
+
+  const handleReviewChanges = async () => {
+    if (!selectedFile || !fileMap || !isDirty) return;
+
+    const originalCode = fileMap.get(selectedFile);
+    const modifiedCode = activeCode;
+
+    if (originalCode === modifiedCode) {
+      toast({ title: "변경사항 없음", description: "코드가 변경되지 않았습니다.", variant: "default" });
+      return;
+    }
+
+    setIsReviewingChanges(true);
+    setChangesReviewResult(null);
+    setIsReviewDialogVisible(true); // Open dialog immediately to show loading state
+
+    try {
+      const result = await reviewCodeAction({
+        code: modifiedCode!,
+        originalCode: originalCode,
+        fileName: selectedFile,
+      });
+      setChangesReviewResult(result);
+      if (result.suggestions.length > 0) {
+        toast({ title: "변경사항 검토 완료", description: `${result.suggestions.length}개의 제안을 찾았습니다.` });
+      } else {
+        toast({ title: "변경사항 검토 완료", description: "좋은 변경입니다! AI가 특별한 제안을 찾지 못했습니다." });
+      }
+    } catch (error) {
+      toast({ title: "검토 오류", description: error instanceof Error ? error.message : "코드 검토 중 오류 발생", variant: "destructive" });
+      setChangesReviewResult({ suggestions: [] }); // Set empty result on error
+    } finally {
+      setIsReviewingChanges(false);
+    }
   };
 
 
@@ -456,6 +496,12 @@ export default function ProjectHelperPage() {
                                   {isDirty && <div className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" title="수정된 내용이 있습니다"></div>}
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
+                                  {isDirty && (
+                                    <Button size="sm" variant="outline" onClick={handleReviewChanges} disabled={isReviewingChanges}>
+                                        <GitCompareArrows className={`mr-2 h-4 w-4 ${isReviewingChanges ? 'animate-spin' : ''}`} />
+                                        AI로 변경사항 검토
+                                    </Button>
+                                  )}
                                   <Button size="sm" variant="ghost" onClick={handleRevertChanges} disabled={!isDirty || isModifying}>
                                       <Undo className="mr-2 h-4 w-4" />
                                       되돌리기
@@ -528,6 +574,27 @@ export default function ProjectHelperPage() {
           </div>
         </main>
         <footer className="py-4 text-center text-sm text-muted-foreground border-t">코드 인사이트 &copy; {new Date().getFullYear()}</footer>
+        
+        <Dialog open={isReviewDialogVisible} onOpenChange={setIsReviewDialogVisible}>
+          <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <GitCompareArrows className="h-5 w-5 text-primary" />
+                AI 변경사항 검토
+              </DialogTitle>
+              <DialogDescription>
+                AI가 원본 코드와 수정된 코드를 비교하여 변경사항에 대한 피드백을 제공합니다.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-grow overflow-y-auto pr-2">
+              <CodeReviewDisplay
+                reviewResult={changesReviewResult}
+                isLoading={isReviewingChanges}
+                onSuggestionFix={(suggestion: Suggestion) => handleRequestModification(`다음 코드 리뷰 제안에 따라 코드를 수정해 주세요: [${suggestion.severity}] ${suggestion.title} - ${suggestion.suggestion}`, activeCode || '')}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
   );
 }
