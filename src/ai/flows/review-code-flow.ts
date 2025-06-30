@@ -41,24 +41,35 @@ const prompt = ai.definePrompt({
   input: {schema: ReviewCodeInputSchema},
   output: {schema: ReviewCodeOutputSchema},
   prompt: `You are an expert code reviewer with years of experience in software development.
-Your task is to analyze the provided source code and identify areas for improvement.
 
 {{#if originalCode}}
 A user has modified the code. Your primary focus should be on reviewing the CHANGES between the 'Original Code' and the 'Code to Review'.
-Analyze if the changes introduce new bugs, performance issues, or bad practices. Also, suggest better ways to implement the user's intent if possible.
+
+Your analysis must include:
+1.  **Syntax & Runtime Errors**: Check for any syntax errors (like missing semicolons, brackets, etc.) or logic that could lead to runtime errors. These are high-priority issues.
+2.  **Bugs & Regressions**: Determine if the changes introduce new bugs or break existing functionality.
+3.  **Best Practices & Performance**: Assess if the changes follow best practices and if there are performance implications.
+4.  **Alternative Implementations**: Suggest better ways to implement the user's intent if possible.
+
 While you should focus on the diff, consider the context of the entire file.
 
 Original Code:
 \`\`\`
 {{{originalCode}}}
 \`\`\`
+{{else}}
+Your task is to analyze the provided source code and identify areas for improvement. Your analysis must cover these key areas:
+1.  **Syntax & Runtime Errors**: Scrutinize the code for syntax errors (e.g., missing semicolons, mismatched brackets) and any logic that could cause runtime exceptions.
+2.  **Potential Bugs & Security**: Identify potential bugs, logic flaws, race conditions, and security vulnerabilities.
+3.  **Best Practices & Readability**: Review for adherence to best practices, performance bottlenecks, overly complex logic, and opportunities to improve readability and maintainability.
+4.  **Modernization**: Suggest opportunities for modernizing the code with newer language features or patterns if applicable.
 {{/if}}
 
 For each issue you find, provide a suggestion with the following details:
 -   **lineStart & lineEnd**: The exact line numbers (in the 'Code to Review') where the issue is located.
 -   **severity**: Classify the severity as 'High', 'Medium', 'Low', or 'Info'.
-    -   'High': Potential bugs, security vulnerabilities, or major performance issues.
-    -   'Medium': Bad practices, non-performant code, or things that could lead to bugs.
+    -   'High': Critical bugs, syntax errors, security vulnerabilities, or major performance issues.
+    -   'Medium': Bad practices, non-performant code, or logic that could lead to bugs.
     -   'Low': Readability issues, complex logic, or deviations from best practices.
     -   'Info': General suggestions, style notes, or opportunities for modernization.
 -   **title**: A short, descriptive title for the suggestion.
