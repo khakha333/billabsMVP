@@ -256,7 +256,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
         return (
           <div 
             key={lineIndex} 
-            className={cn("flex items-start py-0.5", isInteractive && "transition-colors duration-300", isHighlighted && "bg-primary/10 rounded-md")}
+            className={cn("flex items-start", isInteractive && "transition-colors duration-300", isHighlighted && "bg-primary/10 rounded-md")}
             data-line-number={lineIndex + 1}
           >
             {isInteractive && (

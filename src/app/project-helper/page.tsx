@@ -524,7 +524,7 @@ export default function ProjectHelperPage() {
                                 <Textarea
                                     value={activeCode || ''}
                                     onChange={handleCodeChange}
-                                    className="absolute inset-0 w-full h-full min-h-[400px] bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none resize-none"
+                                    className="absolute inset-0 w-full h-full min-h-[400px] bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none resize-none leading-relaxed"
                                     placeholder={!activeCode ? "파일 내용이 여기에 표시됩니다..." : ""}
                                     disabled={isModifying}
                                     spellCheck="false"
