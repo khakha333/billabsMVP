@@ -39,7 +39,6 @@ const tokenizeCode = (code: string): string[] => {
   const combinedRegex = new RegExp(tokenPatterns.map(r => `(${r.source})`).join('|'), 'g');
 
   const tokens: string[] = [];
-  let match;
   for (const m of code.matchAll(combinedRegex)) {
     for (let i = 1; i < m.length; i++) {
       if (m[i] !== undefined) {
@@ -102,7 +101,6 @@ const extractFunctionNameFromLine = (line: string): string | null => {
 export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegmentSelect, highlightedLines, variant = 'full', className }) => {
   const codeDisplayRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const lines = (code || '').split('\n');
   const chatContext = useChatContext();
 
   const [selectedTextForDialog, setSelectedTextForDialog] = useState<string | null>(null);
@@ -243,13 +241,31 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
     };
   };
 
+  if (variant === 'minimal') {
+    const codeSegments = code.split(/(\n)/g); // Split by newline, but keep it in the array
+    return (
+      <pre className={cn("font-mono text-sm whitespace-pre-wrap break-words relative [tab-size:4]", className)}>
+        {codeSegments.map((segment, segIndex) => {
+          if (segment === '\n') {
+            return <br key={`br-${segIndex}`} />;
+          }
+          const tokens = tokenizeCode(segment);
+          return tokens.map((token, tokenIndex) => (
+            <CodeToken key={`${segIndex}-${tokenIndex}`} token={token} fullCodeContext={code} isInteractive={false} />
+          ));
+        })}
+      </pre>
+    );
+  }
+
+  const lines = (code || '').split('\n');
   const isInteractive = variant === 'full';
 
   const codeRenderer = (
     <pre className={cn(
       "font-mono text-sm whitespace-pre-wrap break-words relative [tab-size:4]",
       isInteractive 
-        ? 'bg-background rounded-md p-4 leading-relaxed' 
+        ? 'bg-background rounded-md p-4' 
         : cn('bg-transparent', className)
     )}>
       {lines.map((line, lineIndex) => {
@@ -260,7 +276,11 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
         return (
           <div 
             key={lineIndex} 
-            className={cn("flex items-start", isInteractive && "transition-colors duration-300", isHighlighted && "bg-primary/10 rounded-md")}
+            className={cn(
+              "flex items-start", 
+              isInteractive && "transition-colors duration-300", 
+              isHighlighted && "bg-primary/10 rounded-md"
+            )}
             data-line-number={lineIndex + 1}
           >
             {isInteractive && (
@@ -283,7 +303,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
                 </div>
               </>
             )}
-            <code className="line-content flex-grow whitespace-pre break-words">
+            <code className="line-content flex-grow whitespace-pre break-words leading-relaxed">
               {lineTokens.map((token, tokenIndex) => (
                 <CodeToken key={tokenIndex} token={token} fullCodeContext={code} isInteractive={isInteractive} />
               ))}
@@ -293,10 +313,6 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
       })}
     </pre>
   );
-
-  if (variant === 'minimal') {
-    return codeRenderer;
-  }
 
   return (
     <Card className={cn("h-full flex flex-col relative", className)} ref={codeDisplayRef}>
