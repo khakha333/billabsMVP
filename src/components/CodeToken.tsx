@@ -1,4 +1,3 @@
-
 "use client";
 
 import type React from 'react';
@@ -7,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Button } from '@/components/ui/button'; // For chat link
 import { MessageSquarePlus } from 'lucide-react'; // Icon for chat link
 import { Skeleton } from '@/components/ui/skeleton';
-import { explainCodeSegmentAction, explainCodeLineAction } from '@/lib/actions';
+import { explainCodeSegmentAction } from '@/lib/actions';
 import type { ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
 import { useChatContext } from '@/contexts/ChatContext'; // Import chat context
 
@@ -111,7 +110,6 @@ const getLineContainingToken = (fullCode: string, tokenValue: string, spanElemen
 
 export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext, isInteractive = true }) => {
   const chatContext = useChatContext();
-  const { focusChatInput } = chatContext || {};
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
@@ -121,6 +119,7 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext, is
   const [explainedSegment, setExplainedSegment] = useState<string | null>(null);
 
   const tokenType = getTokenType(token);
+  const { focusChatInput } = chatContext || {};
 
   const isPotentiallyExplainable =
     token.trim().length > 0 &&
@@ -166,7 +165,7 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext, is
      setExplainedSegment(lineOfCode);
      setIsLoading(true);
      try {
-        const result = await explainCodeLineAction({ code: fullCodeContext, codeSegment: lineOfCode });
+        const result = await explainCodeSegmentAction({ code: fullCodeContext, codeSegment: lineOfCode });
         setLineExplanation(result.explanation);
      } catch (error) {
         console.error("Error fetching line explanation:", error);
@@ -208,18 +207,6 @@ export const CodeToken: React.FC<CodeTokenProps> = ({ token, fullCodeContext, is
       setIsTooltipOpen(false); // Close tooltip after clicking
     }
   };
-
-  if (token === '\n') {
-    return <br />;
-  }
-  if (token.match(/^\s+$/) && token !== '\n') {
-    // Preserve multiple spaces by rendering them explicitly or using 'whitespace-pre'
-    return <span style={{whiteSpace: 'pre'}}>{token}</span>;
-  }
-   if (token.trim() === '' && token !== '\n') { // Handle cases like single space that isn't newline
-     return <span>{token}</span>; // Or return null / <></> if it shouldn't render anything
-  }
-
 
   const content = (
     <span

@@ -242,18 +242,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   };
 
   if (variant === 'minimal') {
-    const codeSegments = code.split(/(\n)/g); // Split by newline, but keep it in the array
+    const tokens = tokenizeCode(code || '');
     return (
       <pre className={cn("font-mono text-sm whitespace-pre-wrap break-words relative [tab-size:4]", className)}>
-        {codeSegments.map((segment, segIndex) => {
-          if (segment === '\n') {
-            return <br key={`br-${segIndex}`} />;
-          }
-          const tokens = tokenizeCode(segment);
-          return tokens.map((token, tokenIndex) => (
-            <CodeToken key={`${segIndex}-${tokenIndex}`} token={token} fullCodeContext={code} isInteractive={false} />
-          ));
-        })}
+        {tokens.map((token, tokenIndex) => (
+          <CodeToken key={tokenIndex} token={token} fullCodeContext={code} isInteractive={false} />
+        ))}
       </pre>
     );
   }

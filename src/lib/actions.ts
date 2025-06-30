@@ -3,9 +3,6 @@
 import { summarizeCodeStructure, type SummarizeCodeStructureInput, type SummarizeCodeStructureOutput } from '@/ai/flows/summarize-code-structure';
 import { explainCodeSegment, type ExplainCodeSegmentInput, type ExplainCodeSegmentOutput } from '@/ai/flows/explain-code-segment';
 import { chatWithCode, type ChatWithCodeInput, type ChatWithCodeOutput } from '@/ai/flows/chat-with-code-flow';
-// Ensure explainCodeLine and ExplainCodeLineInput/Output are correctly typed if they are aliases
-import { explainCodeSegment as explainCodeLine } from '@/ai/flows/explain-code-segment';
-import type { ExplainCodeSegmentInput as ExplainCodeLineInput, ExplainCodeSegmentOutput as ExplainCodeLineOutput } from '@/ai/flows/explain-code-segment';
 
 import { generateApiExamples, type GenerateApiExamplesInput, type GenerateApiExamplesOutput } from '@/ai/flows/generate-api-examples-flow';
 import { chatWithApiContext, type ChatWithApiContextInput, type ChatWithApiContextOutput } from '@/ai/flows/chat-with-api-context-flow';
@@ -26,10 +23,6 @@ export async function analyzeCodeStructureAction(input: SummarizeCodeStructureIn
 
 export async function explainCodeSegmentAction(input: ExplainCodeSegmentInput): Promise<ExplainCodeSegmentOutput> {
   return await explainCodeSegment(input);
-}
-
-export async function explainCodeLineAction(input: ExplainCodeLineInput): Promise<ExplainCodeLineOutput> {
-    return await explainCodeLine(input);
 }
 
 export async function chatWithCodeAction(input: ChatWithCodeInput): Promise<ChatWithCodeOutput> {
