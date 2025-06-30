@@ -24,7 +24,6 @@ import { parseDependencies, type DependencyGraphData } from '@/lib/dependency-pa
 import { ProjectSummaryDisplay } from '@/components/ProjectSummaryDisplay';
 import { Textarea } from '@/components/ui/textarea';
 import { CodeDiffViewer } from '@/components/CodeDiffViewer';
-import { CodeReviewDisplay } from '@/components/CodeReviewDisplay';
 import { CodeDisplay } from '@/components/CodeDisplay';
 
 
@@ -537,23 +536,22 @@ export default function ProjectHelperPage() {
                           </div>
                       
                           {/* Editor Pane */}
-                          <div className="flex-grow bg-[#282c34] p-0 overflow-y-auto overflow-x-auto rounded-b-lg" ref={editorContainerRef}>
-                            <div className="relative font-mono text-sm">
-                                <CodeDisplay
-                                    code={activeCode || ''}
-                                    variant="minimal"
-                                    className="w-full min-h-[400px] p-4 pointer-events-none leading-relaxed"
-                                />
-                                <Textarea
-                                    ref={editorTextareaRef}
-                                    value={activeCode || ''}
-                                    onChange={handleCodeChange}
-                                    className="absolute inset-0 w-full h-full min-h-[400px] bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none resize-none whitespace-pre-wrap break-words [tab-size:4] leading-relaxed"
-                                    placeholder={!activeCode ? "파일 내용이 여기에 표시됩니다..." : ""}
-                                    disabled={isModifying}
-                                    spellCheck="false"
-                                />
-                            </div>
+                          <div className="grid flex-grow bg-[#282c34] rounded-b-lg font-mono text-sm overflow-auto" ref={editorContainerRef}>
+                              {/* The CodeDisplay and Textarea will occupy the same grid cell, forcing them to overlap. */}
+                              <CodeDisplay
+                                  code={activeCode || ''}
+                                  variant="minimal"
+                                  className="col-start-1 row-start-1 w-full min-h-[400px] p-4 pointer-events-none leading-relaxed"
+                              />
+                              <Textarea
+                                  ref={editorTextareaRef}
+                                  value={activeCode || ''}
+                                  onChange={handleCodeChange}
+                                  className="col-start-1 row-start-1 w-full min-h-[400px] font-mono text-sm bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 p-4 !outline-none resize-none whitespace-pre-wrap break-words [tab-size:4] leading-relaxed"
+                                  placeholder={!activeCode ? "파일 내용이 여기에 표시됩니다..." : ""}
+                                  disabled={isModifying}
+                                  spellCheck="false"
+                              />
                           </div>
                       
                           {/* Editor Footer */}
