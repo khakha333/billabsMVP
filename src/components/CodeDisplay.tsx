@@ -246,7 +246,12 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   const isInteractive = variant === 'full';
 
   const codeRenderer = (
-    <pre className={cn("font-mono text-sm whitespace-pre-wrap break-words relative [tab-size:4]", isInteractive ? 'bg-background rounded-md p-4' : 'bg-transparent text-gray-200')}>
+    <pre className={cn(
+      "font-mono text-sm whitespace-pre-wrap break-words relative [tab-size:4]",
+      isInteractive 
+        ? 'bg-background rounded-md p-4 leading-relaxed' 
+        : cn('bg-transparent', className)
+    )}>
       {lines.map((line, lineIndex) => {
         const lineTokens = tokenizeCode(line);
         const functionName = isInteractive ? extractFunctionNameFromLine(line) : null;
@@ -290,7 +295,7 @@ export const CodeDisplay: React.FC<CodeDisplayProps> = ({ code, fileName, onSegm
   );
 
   if (variant === 'minimal') {
-    return <div className={cn(className, "leading-relaxed")}>{codeRenderer}</div>;
+    return codeRenderer;
   }
 
   return (
