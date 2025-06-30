@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -25,6 +26,7 @@ import { ProjectSummaryDisplay } from '@/components/ProjectSummaryDisplay';
 import { Textarea } from '@/components/ui/textarea';
 import { CodeDiffViewer } from '@/components/CodeDiffViewer';
 import { CodeDisplay } from '@/components/CodeDisplay';
+import { CodeReviewDisplay } from '@/components/CodeReviewDisplay';
 
 
 interface TreeNode {
