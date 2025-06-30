@@ -358,7 +358,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
               fill="transparent" 
               onClick={() => onNodeClick(null)}
           />
-          <g transform={`scale(${zoom}) translate(${pan.x}, ${pan.y})`}>
+          <g transform={`scale(${zoom}) translate(${pan.x / zoom}, ${pan.y / zoom})`}>
             {/* Edge Rendering */}
             <g>
                 {graphData.edges.map(edge => {
