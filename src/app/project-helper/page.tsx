@@ -61,12 +61,36 @@ export default function ProjectHelperPage() {
 
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const editorTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       document.title = '프로젝트 도우미 - 코드 인사이트';
     }
   }, []);
+
+  useEffect(() => {
+    const container = editorContainerRef.current;
+    const textarea = editorTextareaRef.current;
+    if (!container || !textarea) return;
+
+    const handleWheel = (e: WheelEvent) => {
+        // When the user scrolls the textarea, forward it to the parent container.
+        // This keeps the underlying CodeDisplay and the Textarea in sync.
+        container.scrollTop += e.deltaY;
+        container.scrollLeft += e.deltaX;
+        e.preventDefault(); // Prevent the textarea from scrolling on its own.
+    };
+
+    // Use { passive: false } to be able to call e.preventDefault().
+    textarea.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+        textarea.removeEventListener('wheel', handleWheel);
+    };
+  }, []); // Run only once on mount.
+
 
   useEffect(() => {
     if (selectedFile && fileMap) {
@@ -514,14 +538,15 @@ export default function ProjectHelperPage() {
                           </div>
                       
                           {/* Editor Pane */}
-                          <div className="flex-grow bg-[#282c34] p-0 overflow-y-auto rounded-b-lg">
-                            <div className="relative font-mono text-sm">
+                          <div className="flex-grow bg-[#282c34] p-0 overflow-y-auto overflow-x-auto rounded-b-lg" ref={editorContainerRef}>
+                            <div className="relative font-mono text-sm leading-relaxed">
                                 <CodeDisplay
                                     code={activeCode || ''}
                                     variant="minimal"
                                     className="w-full min-h-[400px] !p-4 !bg-transparent pointer-events-none"
                                 />
                                 <Textarea
+                                    ref={editorTextareaRef}
                                     value={activeCode || ''}
                                     onChange={handleCodeChange}
                                     className="absolute inset-0 w-full h-full min-h-[400px] bg-transparent text-transparent caret-white border-0 rounded-none focus-visible:ring-0 font-mono text-sm p-4 !outline-none resize-none leading-relaxed"
@@ -598,3 +623,5 @@ export default function ProjectHelperPage() {
       </div>
   );
 }
+
+    
