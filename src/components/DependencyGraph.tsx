@@ -61,6 +61,8 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
   const [isClient, setIsClient] = useState(false);
+  const isPanning = useRef(false);
+  const startPanPoint = useRef({ x: 0, y: 0 });
   
   useEffect(() => { setIsClient(true); }, []);
 
@@ -207,6 +209,43 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
     return { visibleNodes: nodes, visibleEdges: edgesSet };
   }, [highlightedNodeId, highlightedNeighbors, graphData]);
 
+  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    const target = e.target as SVGElement;
+    if (target.closest('g.cursor-pointer')) {
+        return;
+    }
+    e.preventDefault();
+    isPanning.current = true;
+    startPanPoint.current = { x: e.clientX, y: e.clientY };
+    if (svgRef.current) {
+        svgRef.current.style.cursor = 'grabbing';
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+      if (!isPanning.current) return;
+      e.preventDefault();
+      
+      const dx = e.clientX - startPanPoint.current.x;
+      const dy = e.clientY - startPanPoint.current.y;
+      
+      setPan(prevPan => ({
+          x: prevPan.x + dx,
+          y: prevPan.y + dy,
+      }));
+      
+      startPanPoint.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseUpOrLeave = (e: React.MouseEvent<SVGSVGElement>) => {
+      if (!isPanning.current) return;
+      e.preventDefault();
+      isPanning.current = false;
+      if (svgRef.current) {
+          svgRef.current.style.cursor = 'grab';
+      }
+  };
+
   const renderDirectory = (dir: Directory) => (
     <React.Fragment key={dir.path}>
         <rect
@@ -293,7 +332,17 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
           <Button variant="outline" size="icon" onClick={() => setZoom(z => z / 1.2)}><ZoomOut/></Button>
           <Button variant="outline" size="icon" onClick={() => calculateLayout(graphData)}><RefreshCw/></Button>
         </div>
-        <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${layout.viewBox.width} ${layout.viewBox.height}`}>
+        <svg 
+            ref={svgRef} 
+            width="100%" 
+            height="100%" 
+            viewBox={`0 0 ${layout.viewBox.width} ${layout.viewBox.height}`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUpOrLeave}
+            onMouseLeave={handleMouseUpOrLeave}
+            style={{ cursor: 'grab' }}
+        >
            <defs>
               <marker id="arrowhead" viewBox="-0 -5 10 10" refX="8" refY="0" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
                 <path d="M0,-5L10,0L0,5" fill="hsl(var(--border))" opacity="0.6" />
@@ -302,8 +351,14 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ graphData, hig
                 <path d="M0,-5L10,0L0,5" fill="hsl(var(--primary))" opacity="1" />
               </marker>
             </defs>
-          <rect width={layout.viewBox.width} height={layout.viewBox.height} fill="transparent" onClick={() => onNodeClick(null)} />
-          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+          <rect 
+              width={layout.viewBox.width * (1/zoom)} 
+              height={layout.viewBox.height * (1/zoom)}
+              transform={`translate(${-pan.x}, ${-pan.y})`}
+              fill="transparent" 
+              onClick={() => onNodeClick(null)}
+          />
+          <g transform={`scale(${zoom}) translate(${pan.x}, ${pan.y})`}>
             {/* Edge Rendering */}
             <g>
                 {graphData.edges.map(edge => {
